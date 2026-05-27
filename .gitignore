@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+.DS_Store
+*.user
+*.suo
+*.zip
+package/BepInEx/plugins/valheimCreative/*.dll
+package/BepInEx/plugins/valheimCreative/*.pdb
+

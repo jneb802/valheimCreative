@@ -1,0 +1,30 @@
+# Optional Expand World Data location definition for the creative build pad.
+# Spawn it explicitly with Upgrade World / World Edit Commands:
+#   spawn_location VC_CreativePad pos=0,-12000,45
+#
+# Coordinates in Upgrade World commands use x,z,y. The mod config uses x,y,z.
+
+- prefab: StartTemple:VC_CreativePad
+  enabled: false
+  biome: Meadows
+  quantity: 0
+  prioritized: true
+  group: ValheimCreative
+  exteriorRadius: 96
+  clearArea: true
+  noBuild: false
+  levelArea: true
+  levelRadius: 80
+  levelBorder: 16
+  paint: paved
+  paintRadius: 80
+  paintBorder: 8
+  randomRotation: false
+  objects:
+  - piece_workbench, 0, 4, 0, 0, 0, 0, 1, 1, 1, 1
+  - forge, 5, 4, 0, 0, 0, 0, 1, 1, 1, 1
+  - blackforge, -5, 4, 0, 0, 0, 0, 1, 1, 1, 1
+  - piece_stonecutter, 0, -4, 0, 0, 0, 0, 1, 1, 1, 1
+  - piece_artisanstation, 5, -4, 0, 0, 0, 0, 1, 1, 1, 1
+  - piece_magetable, -5, -4, 0, 0, 0, 0, 1, 1, 1, 1
+

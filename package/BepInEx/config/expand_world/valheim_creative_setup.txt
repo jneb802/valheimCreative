@@ -1,0 +1,22 @@
+# Setup notes
+#
+# 1. Install valheimCreative.dll on the dedicated server.
+# 2. Copy this expand_world folder into BepInEx/config/expand_world.
+# 3. Install Expand World Data if you want the packaged creative pad location.
+# 4. Spawn the pad once with Upgrade World / World Edit Commands:
+#
+#      spawn_location VC_CreativePad pos=0,-12000,45
+#
+#    Upgrade World uses x,z,y coordinates.
+#    valheimCreative.cfg uses x,y,z, so the matching CreativePosition is:
+#
+#      0,45,-12000
+#
+# 5. A player lies in bed and uses:
+#
+#      !creative
+#
+# 6. The player exits with:
+#
+#      !return
+

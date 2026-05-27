@@ -1,0 +1,13 @@
+{
+  "name": "valheimCreative",
+  "version_number": "0.1.0",
+  "website_url": "https://github.com/warpalicious/valheimCreative",
+  "description": "Private server-side creative build zones for Valheim.",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2333",
+    "JereKuusela-Expand_World_Data-1.63.0",
+    "JereKuusela-Expand_World_Prefabs-1.52.0",
+    "JereKuusela-Expand_World_Code-1.3.0",
+    "JereKuusela-Upgrade_World-1.80.0"
+  ]
+}

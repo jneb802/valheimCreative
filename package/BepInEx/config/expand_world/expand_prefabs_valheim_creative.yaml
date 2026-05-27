@@ -1,0 +1,5 @@
+# Expand World Prefabs placeholder.
+# The core creative session logic lives in valheimCreative.dll.
+# Keep this file so the package has a clear extension point for future runtime rules.
+[]
+
