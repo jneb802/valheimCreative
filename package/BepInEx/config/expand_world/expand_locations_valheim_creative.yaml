@@ -4,7 +4,7 @@
 #
 # Coordinates in Upgrade World commands use x,z,y. The mod config uses x,y,z.
 
-- prefab: StartTemple:VC_CreativePad
+- prefab: valheim_creative_pad.blueprint
   enabled: false
   biome: Meadows
   quantity: 0
@@ -21,7 +21,6 @@
   paintBorder: 8
   randomRotation: false
   objects:
-  - piece_workbench, 0, 4, 0, 0, 0, 0, 1, 1, 1, 1
   - forge, 5, 4, 0, 0, 0, 0, 1, 1, 1, 1
   - blackforge, -5, 4, 0, 0, 0, 0, 1, 1, 1, 1
   - piece_stonecutter, 0, -4, 0, 0, 0, 0, 1, 1, 1, 1

@@ -108,9 +108,13 @@ namespace ValheimCreative.Features.Creative
 
                 if (isDead)
                 {
-                    session.WasDead = true;
-                    session.AwaitingRespawn = true;
-                    Save();
+                    if (!session.WasDead || !session.AwaitingRespawn)
+                    {
+                        session.WasDead = true;
+                        session.AwaitingRespawn = true;
+                        Save();
+                    }
+
                     continue;
                 }
 
@@ -302,4 +306,3 @@ namespace ValheimCreative.Features.Creative
         }
     }
 }
-
