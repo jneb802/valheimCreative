@@ -2,10 +2,10 @@
 #
 # 1. Install valheimCreative.dll on the dedicated server.
 # 2. Copy this expand_world folder into BepInEx/config/expand_world.
-# 3. Install Expand World Data if you want the packaged creative pad location.
-# 4. Spawn the pad once with Upgrade World / World Edit Commands:
+# 3. For the first Valdev test, spawn the vanilla StartTemple once with
+#    Upgrade World / World Edit Commands:
 #
-#      spawn_location VC_CreativePad pos=0,-12000,45
+#      spawn_location StartTemple pos=0,-12000,45
 #
 #    Upgrade World uses x,z,y coordinates.
 #    valheimCreative.cfg uses x,y,z, so the matching CreativePosition is:
@@ -19,4 +19,3 @@
 # 6. The player exits with:
 #
 #      !return
-

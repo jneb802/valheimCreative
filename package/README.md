@@ -2,13 +2,12 @@
 
 Private Praetoris creative build-zone package.
 
-Install `BepInEx/plugins/valheimCreative/valheimCreative.dll` on the dedicated server. Copy `BepInEx/config/expand_world` into the server config folder if the creative pad location should be managed by Expand World Data.
+Install `BepInEx/plugins/valheimCreative/valheimCreative.dll` on the dedicated server.
 
-Spawn the packaged pad once:
+For the first Valdev test, spawn the vanilla StartTemple at the creative target:
 
 ```text
-spawn_location VC_CreativePad pos=0,-12000,45
+spawn_location StartTemple pos=0,-12000,45
 ```
 
 Players enter by lying in bed and using `!creative`. They exit with `!return`.
-
