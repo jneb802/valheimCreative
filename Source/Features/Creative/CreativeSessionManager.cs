@@ -155,32 +155,64 @@ namespace ValheimCreative.Features.Creative
 
         internal static Player? FindPlayer(ZDOID characterId)
         {
-            ZDO? zdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(characterId) : null;
-            if (zdo != null && ZNetScene.instance != null)
+            Player? direct = FindPlayerFromZdo(characterId);
+            if (direct != null)
             {
-                ZNetView instance = ZNetScene.instance.FindInstance(zdo);
-                if (instance != null)
-                {
-                    Player player = instance.GetComponent<Player>();
-                    if (player != null)
-                    {
-                        return player;
-                    }
-                }
+                return direct;
             }
+
+            ZDO? zdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(characterId) : null;
+            long targetOwner = zdo != null ? zdo.GetOwner() : 0L;
 
             foreach (Player player in Player.GetAllPlayers())
             {
-                if (player != null &&
-                    player.m_nview != null &&
-                    player.m_nview.IsValid() &&
-                    player.m_nview.GetZDO().m_uid == characterId)
+                if (player == null || player.m_nview == null || !player.m_nview.IsValid())
+                {
+                    continue;
+                }
+
+                ZDO playerZdo = player.m_nview.GetZDO();
+                if (playerZdo.m_uid == characterId ||
+                    targetOwner != 0L && playerZdo.GetOwner() == targetOwner)
                 {
                     return player;
                 }
             }
 
             return null;
+        }
+
+        internal static string DescribePlayerLookup(ZDOID characterId)
+        {
+            ZDO? zdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(characterId) : null;
+            string zdoInfo = zdo == null
+                ? "targetZdoFound=false"
+                : $"targetZdoFound=true targetZdo={zdo.m_uid} owner={zdo.GetOwner()} prefab={DescribePrefab(zdo.GetPrefab())} position={Format(zdo.GetPosition())}";
+
+            string instanceInfo = "instanceFound=false";
+            if (zdo != null && ZNetScene.instance != null)
+            {
+                ZNetView instance = ZNetScene.instance.FindInstance(zdo);
+                if (instance != null)
+                {
+                    bool hasPlayer =
+                        instance.GetComponent<Player>() != null ||
+                        instance.GetComponentInParent<Player>() != null ||
+                        instance.GetComponentInChildren<Player>() != null;
+                    instanceInfo = $"instanceFound=true instance={instance.gameObject.name} hasPlayer={hasPlayer}";
+                }
+            }
+
+            List<string> players = Player.GetAllPlayers()
+                .Where(player => player != null)
+                .Select(DescribePlayer)
+                .ToList();
+
+            string playerInfo = players.Count == 0
+                ? "players=[]"
+                : "players=[" + string.Join("; ", players) + "]";
+
+            return $"{zdoInfo} {instanceInfo} {playerInfo}";
         }
 
         internal static void Load()
@@ -227,6 +259,25 @@ namespace ValheimCreative.Features.Creative
         private static Player? FindPlayer(long playerId)
         {
             return Player.GetAllPlayers().FirstOrDefault(player => player != null && player.GetPlayerID() == playerId);
+        }
+
+        private static Player? FindPlayerFromZdo(ZDOID characterId)
+        {
+            ZDO? zdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(characterId) : null;
+            if (zdo == null || ZNetScene.instance == null)
+            {
+                return null;
+            }
+
+            ZNetView instance = ZNetScene.instance.FindInstance(zdo);
+            if (instance == null)
+            {
+                return null;
+            }
+
+            return instance.GetComponent<Player>() ??
+                   instance.GetComponentInParent<Player>() ??
+                   instance.GetComponentInChildren<Player>();
         }
 
         private static bool IsServerReady()
@@ -309,6 +360,33 @@ namespace ValheimCreative.Features.Creative
             return Path.IsPathRooted(configured)
                 ? configured
                 : Path.Combine(Paths.ConfigPath, configured);
+        }
+
+        private static string DescribePrefab(int prefabHash)
+        {
+            if (ZNetScene.instance == null)
+            {
+                return prefabHash.ToString();
+            }
+
+            GameObject prefab = ZNetScene.instance.GetPrefab(prefabHash);
+            return prefab != null ? $"{prefab.name}/{prefabHash}" : prefabHash.ToString();
+        }
+
+        private static string DescribePlayer(Player player)
+        {
+            if (player.m_nview == null || !player.m_nview.IsValid())
+            {
+                return $"{player.GetPlayerName()} invalid-nview";
+            }
+
+            ZDO zdo = player.m_nview.GetZDO();
+            return $"{player.GetPlayerName()} playerId={player.GetPlayerID()} zdo={zdo.m_uid} owner={zdo.GetOwner()} position={Format(player.transform.position)}";
+        }
+
+        private static string Format(Vector3 vector)
+        {
+            return $"{vector.x:F1},{vector.y:F1},{vector.z:F1}";
         }
 
         private static void LogDebug(string message)

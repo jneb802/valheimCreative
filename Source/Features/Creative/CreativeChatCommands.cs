@@ -49,6 +49,9 @@ namespace ValheimCreative.Features.Creative
                 Player? player = CreativeSessionManager.FindPlayer(rpcData.m_targetZDO);
                 if (player == null)
                 {
+                    ValheimCreativePlugin.ModLogger.LogWarning(
+                        $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: player was not found. " +
+                        CreativeSessionManager.DescribePlayerLookup(rpcData.m_targetZDO));
                     SendPrivateLine(rpcData.m_senderPeerID, Vector3.zero, userInfo, "Creative command failed: player was not found.");
                     return true;
                 }
@@ -124,4 +127,3 @@ namespace ValheimCreative.Features.Creative
         }
     }
 }
-
