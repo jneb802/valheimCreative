@@ -46,8 +46,8 @@ namespace ValheimCreative.Features.Creative
                     return false;
                 }
 
-                Player? player = CreativeSessionManager.FindPlayer(rpcData.m_targetZDO);
-                if (player == null)
+                ZDO? playerZdo = CreativeSessionManager.FindPlayerZdo(rpcData.m_targetZDO);
+                if (playerZdo == null)
                 {
                     ValheimCreativePlugin.ModLogger.LogWarning(
                         $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: player was not found. " +
@@ -58,13 +58,13 @@ namespace ValheimCreative.Features.Creative
 
                 IEnumerable<string> response = command switch
                 {
-                    CreativeCommand.Enter => CreativeSessionManager.EnterCreative(rpcData.m_senderPeerID, player),
-                    CreativeCommand.Return => CreativeSessionManager.ReturnFromCreative(rpcData.m_senderPeerID, player),
-                    CreativeCommand.Status => CreativeSessionManager.GetStatus(player),
+                    CreativeCommand.Enter => CreativeSessionManager.EnterCreative(rpcData.m_senderPeerID, playerZdo, userInfo.Name),
+                    CreativeCommand.Return => CreativeSessionManager.ReturnFromCreative(rpcData.m_senderPeerID, playerZdo),
+                    CreativeCommand.Status => CreativeSessionManager.GetStatus(playerZdo),
                     _ => Array.Empty<string>()
                 };
 
-                Vector3 position = player.transform.position + Vector3.up * 1.8f;
+                Vector3 position = playerZdo.GetPosition() + Vector3.up * 1.8f;
                 foreach (string line in response)
                 {
                     SendPrivateLine(rpcData.m_senderPeerID, position, userInfo, line);

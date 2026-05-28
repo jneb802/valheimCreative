@@ -13,6 +13,51 @@ namespace ValheimCreative.Features.Creative
         private static readonly Dictionary<long, CreativeSession> SessionsByPlayerId = new();
         private static float _nextDeathRecoveryCheck;
 
+        internal static IEnumerable<string> EnterCreative(long peerId, ZDO playerZdo, string fallbackName)
+        {
+            if (!IsServerReady())
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            long playerId = GetPlayerId(playerZdo);
+            if (playerId == 0L)
+            {
+                return Lines("Could not identify your character.");
+            }
+
+            if (SessionsByPlayerId.TryGetValue(playerId, out CreativeSession existing))
+            {
+                existing.PeerId = ResolvePeerId(playerZdo, peerId);
+                SendCreativeKeys(existing);
+                TeleportTo(playerZdo, existing.CreativePosition, existing.CreativeRotation);
+                Save();
+                return Lines("Creative session restored.");
+            }
+
+            if (ModConfig.RequireBed.Value && !IsInBed(playerZdo))
+            {
+                return Lines("Lie in your bed before using !creative.");
+            }
+
+            CreativeSession session = new(
+                playerId,
+                ResolvePeerId(playerZdo, peerId),
+                GetPlayerName(playerZdo, fallbackName),
+                ModConfig.CreativeSlotId.Value,
+                ModConfig.CreativePositionValue,
+                ModConfig.CreativeRotationValue,
+                playerZdo.GetPosition(),
+                playerZdo.GetRotation());
+
+            SessionsByPlayerId[playerId] = session;
+            SendCreativeKeys(session);
+            TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
+            Save();
+            LogDebug($"Started creative session for {session.PlayerName} ({session.PlayerId}).");
+            return Lines("Creative build mode enabled. Use !return to leave.");
+        }
+
         internal static IEnumerable<string> EnterCreative(long peerId, Player player)
         {
             if (!IsServerReady())
@@ -58,6 +103,24 @@ namespace ValheimCreative.Features.Creative
             return Lines("Creative build mode enabled. Use !return to leave.");
         }
 
+        internal static IEnumerable<string> ReturnFromCreative(long peerId, ZDO playerZdo)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                SendNormalKeys(ResolvePeerId(playerZdo, peerId));
+                return Lines("You do not have an active creative session.");
+            }
+
+            session.PeerId = ResolvePeerId(playerZdo, peerId);
+            SendNormalKeys(session.PeerId);
+            TeleportTo(playerZdo, session.ReturnPosition, session.ReturnRotation);
+            SessionsByPlayerId.Remove(playerId);
+            Save();
+            LogDebug($"Ended creative session for {session.PlayerName} ({session.PlayerId}).");
+            return Lines("Creative build mode disabled.");
+        }
+
         internal static IEnumerable<string> ReturnFromCreative(long peerId, Player player)
         {
             long playerId = player.GetPlayerID();
@@ -87,6 +150,17 @@ namespace ValheimCreative.Features.Creative
             return Lines($"Active creative session: {session.SlotId}.");
         }
 
+        internal static IEnumerable<string> GetStatus(ZDO playerZdo)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("No active creative session.");
+            }
+
+            return Lines($"Active creative session: {session.SlotId}.");
+        }
+
         internal static void Update()
         {
             if (!IsServerReady() || SessionsByPlayerId.Count == 0 || Time.time < _nextDeathRecoveryCheck)
@@ -97,14 +171,14 @@ namespace ValheimCreative.Features.Creative
             _nextDeathRecoveryCheck = Time.time + Mathf.Max(0.25f, ModConfig.DeathRecoveryCheckSeconds.Value);
             foreach (CreativeSession session in SessionsByPlayerId.Values.ToList())
             {
-                Player? player = FindPlayer(session.PlayerId);
-                if (player == null)
+                ZDO? playerZdo = FindPlayerZdo(session.PlayerId);
+                if (playerZdo == null)
                 {
                     continue;
                 }
 
-                session.PeerId = ResolvePeerId(player, session.PeerId);
-                bool isDead = IsDead(player);
+                session.PeerId = ResolvePeerId(playerZdo, session.PeerId);
+                bool isDead = IsDead(playerZdo);
 
                 if (isDead)
                 {
@@ -121,7 +195,7 @@ namespace ValheimCreative.Features.Creative
                 if (session.AwaitingRespawn || session.WasDead)
                 {
                     SendCreativeKeys(session);
-                    player.TeleportTo(session.CreativePosition, session.CreativeRotation, true);
+                    TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
                     session.AwaitingRespawn = false;
                     session.WasDead = false;
                     Save();
@@ -143,14 +217,21 @@ namespace ValheimCreative.Features.Creative
 
             foreach (CreativeSession session in SessionsByPlayerId.Values)
             {
-                Player? player = FindPlayer(session.PlayerId);
-                if (player != null)
+                ZDO? playerZdo = FindPlayerZdo(session.PlayerId);
+                if (playerZdo != null)
                 {
-                    session.PeerId = ResolvePeerId(player, session.PeerId);
+                    session.PeerId = ResolvePeerId(playerZdo, session.PeerId);
                 }
 
                 SendCreativeKeys(session);
             }
+        }
+
+        internal static ZDO? FindPlayerZdo(ZDOID characterId)
+        {
+            return ZDOMan.instance != null && !characterId.IsNone()
+                ? ZDOMan.instance.GetZDO(characterId)
+                : null;
         }
 
         internal static Player? FindPlayer(ZDOID characterId)
@@ -261,6 +342,30 @@ namespace ValheimCreative.Features.Creative
             return Player.GetAllPlayers().FirstOrDefault(player => player != null && player.GetPlayerID() == playerId);
         }
 
+        private static ZDO? FindPlayerZdo(long playerId)
+        {
+            if (ZNet.instance == null || ZDOMan.instance == null)
+            {
+                return null;
+            }
+
+            foreach (ZNetPeer peer in ZNet.instance.m_peers)
+            {
+                if (peer.m_characterID.IsNone())
+                {
+                    continue;
+                }
+
+                ZDO? zdo = ZDOMan.instance.GetZDO(peer.m_characterID);
+                if (zdo != null && GetPlayerId(zdo) == playerId)
+                {
+                    return zdo;
+                }
+            }
+
+            return null;
+        }
+
         private static Player? FindPlayerFromZdo(ZDOID characterId)
         {
             ZDO? zdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(characterId) : null;
@@ -295,11 +400,21 @@ namespace ValheimCreative.Features.Creative
                    player.m_nview.GetZDO().GetBool(ZDOVars.s_inBed);
         }
 
+        private static bool IsInBed(ZDO playerZdo)
+        {
+            return playerZdo.GetBool(ZDOVars.s_inBed);
+        }
+
         private static bool IsDead(Player player)
         {
             return player.m_nview != null &&
                    player.m_nview.IsValid() &&
                    player.m_nview.GetZDO().GetBool(ZDOVars.s_dead);
+        }
+
+        private static bool IsDead(ZDO playerZdo)
+        {
+            return playerZdo.GetBool(ZDOVars.s_dead);
         }
 
         private static long ResolvePeerId(Player player, long fallback)
@@ -314,6 +429,35 @@ namespace ValheimCreative.Features.Creative
             }
 
             return fallback;
+        }
+
+        private static long ResolvePeerId(ZDO playerZdo, long fallback)
+        {
+            long owner = playerZdo.GetOwner();
+            return owner != 0L ? owner : fallback;
+        }
+
+        private static long GetPlayerId(ZDO playerZdo)
+        {
+            return playerZdo.GetLong(ZDOVars.s_playerID);
+        }
+
+        private static string GetPlayerName(ZDO playerZdo, string fallback)
+        {
+            string name = playerZdo.GetString(ZDOVars.s_playerName, fallback);
+            return string.IsNullOrWhiteSpace(name) ? fallback : name;
+        }
+
+        private static void TeleportTo(ZDO playerZdo, Vector3 position, Quaternion rotation)
+        {
+            long owner = playerZdo.GetOwner();
+            if (owner == 0L)
+            {
+                ValheimCreativePlugin.ModLogger.LogWarning($"Cannot teleport player ZDO {playerZdo.m_uid}: no owner.");
+                return;
+            }
+
+            ZRoutedRpc.instance.InvokeRoutedRPC(owner, playerZdo.m_uid, "RPC_TeleportTo", position, rotation, true);
         }
 
         private static void SendCreativeKeys(CreativeSession session)
