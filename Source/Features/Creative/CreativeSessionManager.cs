@@ -155,6 +155,20 @@ namespace ValheimCreative.Features.Creative
 
         internal static Player? FindPlayer(ZDOID characterId)
         {
+            ZDO? zdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(characterId) : null;
+            if (zdo != null && ZNetScene.instance != null)
+            {
+                ZNetView instance = ZNetScene.instance.FindInstance(zdo);
+                if (instance != null)
+                {
+                    Player player = instance.GetComponent<Player>();
+                    if (player != null)
+                    {
+                        return player;
+                    }
+                }
+            }
+
             foreach (Player player in Player.GetAllPlayers())
             {
                 if (player != null &&
