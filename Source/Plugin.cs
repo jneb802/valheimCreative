@@ -33,7 +33,6 @@ namespace ValheimCreative
 
         private void Update()
         {
-            CreativeChatCommands.RegisterDirectRpcHandler();
             CreativeInventoryGate.Update();
             CreativeSessionManager.Update();
         }
