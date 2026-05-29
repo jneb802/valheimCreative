@@ -8,6 +8,6 @@
     - TerrainModifier.m_playerModifiction, false
   floats:
     - TerrainModifier.m_levelOffset, 0
-    - TerrainModifier.m_levelRadius, 64
-    - TerrainModifier.m_smoothRadius, 64
+    - TerrainModifier.m_levelRadius, 32
+    - TerrainModifier.m_smoothRadius, 32
     - TerrainModifier.m_smoothPower, 4
