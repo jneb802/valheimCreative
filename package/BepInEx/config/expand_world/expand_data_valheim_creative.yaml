@@ -1,0 +1,13 @@
+- name: creative_terrain_modifier
+  bools:
+    - TerrainModifier.m_level, true
+    - TerrainModifier.m_square, false
+    - TerrainModifier.m_smooth, true
+    - TerrainModifier.m_paintCleared, false
+    - TerrainModifier.m_useTerrainCompiler, false
+    - TerrainModifier.m_playerModifiction, false
+  floats:
+    - TerrainModifier.m_levelOffset, 0
+    - TerrainModifier.m_levelRadius, 64
+    - TerrainModifier.m_smoothRadius, 64
+    - TerrainModifier.m_smoothPower, 4

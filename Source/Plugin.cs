@@ -24,6 +24,7 @@ namespace ValheimCreative
             ModConfig.Bind(Config);
             RoutedRpcDispatcher.Clear();
             CreativeChatCommands.RegisterRoutedRpcHandlers();
+            CreativeInventoryGate.RegisterRoutedRpcHandler();
             CreativeSessionManager.Load();
 
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
@@ -32,6 +33,7 @@ namespace ValheimCreative
 
         private void Update()
         {
+            CreativeInventoryGate.Update();
             CreativeSessionManager.Update();
         }
 
@@ -43,4 +45,3 @@ namespace ValheimCreative
         }
     }
 }
-

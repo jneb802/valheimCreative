@@ -2,20 +2,25 @@
 #
 # 1. Install valheimCreative.dll on the dedicated server.
 # 2. Copy this expand_world folder into BepInEx/config/expand_world.
-# 3. For the first Valdev test, spawn the vanilla StartTemple once with
-#    Upgrade World / World Edit Commands:
+# 3. valheimCreative allocates each owner a persistent creative zone and spawns
+#    the creative StartTemple clone when that zone is first used.
 #
-#      spawn_location StartTemple pos=0,-12000,45
+#    valheimCreative.cfg uses x,y,z. The default CreativePosition is:
 #
-#    Upgrade World uses x,z,y coordinates.
-#    valheimCreative.cfg uses x,y,z, so the matching CreativePosition is:
+#      0,45,-13000
 #
-#      0,45,-12000
-#
-# 5. A player lies in bed and uses:
+# 4. A player lies in bed and uses:
 #
 #      !creative
 #
-# 6. The player exits with:
+# 5. The owner can show an invite code with:
+#
+#      !creative invite
+#
+#    Another player joins that active zone with:
+#
+#      !creative join CODE
+#
+# 6. The player exits by using:
 #
 #      !return

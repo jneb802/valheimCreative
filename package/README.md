@@ -4,10 +4,15 @@ Private Praetoris creative build-zone package.
 
 Install `BepInEx/plugins/valheimCreative/valheimCreative.dll` on the dedicated server.
 
-For the first Valdev test, spawn the vanilla StartTemple at the creative target:
+The server allocates each owner a persistent creative zone and spawns the
+creative StartTemple clone when the zone is first used.
+
+Players enter by lying in bed and using `!creative`.
+They exit by using `!return`.
+
+Invite commands:
 
 ```text
-spawn_location StartTemple pos=0,-12000,45
+!creative invite
+!creative join CODE
 ```
-
-Players enter by lying in bed and using `!creative`. They exit with `!return`.

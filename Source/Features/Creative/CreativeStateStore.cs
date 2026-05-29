@@ -1,0 +1,209 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
+using UnityEngine;
+
+namespace ValheimCreative.Features.Creative
+{
+    internal static class CreativeStateStore
+    {
+        internal static List<CreativeSession> LoadSessions(string path)
+        {
+            if (!File.Exists(path))
+            {
+                return new List<CreativeSession>();
+            }
+
+            SessionState state = ReadJson<SessionState>(path);
+            return state.Sessions.Select(record => record.ToSession()).ToList();
+        }
+
+        internal static void SaveSessions(string path, IEnumerable<CreativeSession> sessions)
+        {
+            WriteJson(
+                path,
+                new SessionState
+                {
+                    Sessions = sessions.Select(SessionRecord.FromSession).ToList()
+                });
+        }
+
+        internal static List<CreativeZone> LoadZones(string path)
+        {
+            if (!File.Exists(path))
+            {
+                return new List<CreativeZone>();
+            }
+
+            ZoneState state = ReadJson<ZoneState>(path);
+            return state.Zones.Select(record => record.ToZone()).ToList();
+        }
+
+        internal static void SaveZones(string path, IEnumerable<CreativeZone> zones)
+        {
+            WriteJson(
+                path,
+                new ZoneState
+                {
+                    Zones = zones.Select(ZoneRecord.FromZone).ToList()
+                });
+        }
+
+        private static T ReadJson<T>(string path) where T : new()
+        {
+            return JsonConvert.DeserializeObject<T>(File.ReadAllText(path)) ?? new T();
+        }
+
+        private static void WriteJson<T>(string path, T value)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonConvert.SerializeObject(value, Formatting.Indented));
+        }
+
+        private sealed class SessionState
+        {
+            [JsonProperty("schema")]
+            public int Schema { get; set; } = 1;
+
+            [JsonProperty("sessions")]
+            public List<SessionRecord> Sessions { get; set; } = new();
+        }
+
+        private sealed class ZoneState
+        {
+            [JsonProperty("schema")]
+            public int Schema { get; set; } = 1;
+
+            [JsonProperty("zones")]
+            public List<ZoneRecord> Zones { get; set; } = new();
+        }
+
+        private sealed class SessionRecord
+        {
+            [JsonProperty("playerId")]
+            public long PlayerId { get; set; }
+
+            [JsonProperty("peerId")]
+            public long PeerId { get; set; }
+
+            [JsonProperty("playerName")]
+            public string PlayerName { get; set; } = string.Empty;
+
+            [JsonProperty("ownerPlayerId")]
+            public long OwnerPlayerId { get; set; }
+
+            [JsonProperty("slotId")]
+            public string SlotId { get; set; } = string.Empty;
+
+            [JsonProperty("creativePosition")]
+            public string CreativePosition { get; set; } = "0,0,0";
+
+            [JsonProperty("creativeRotation")]
+            public string CreativeRotation { get; set; } = "0,0,0";
+
+            [JsonProperty("returnPosition")]
+            public string ReturnPosition { get; set; } = "0,0,0";
+
+            [JsonProperty("returnRotation")]
+            public string ReturnRotation { get; set; } = "0,0,0";
+
+            [JsonProperty("awaitingRespawn")]
+            public bool AwaitingRespawn { get; set; }
+
+            public CreativeSession ToSession()
+            {
+                return new CreativeSession(
+                    PlayerId,
+                    PeerId,
+                    PlayerName,
+                    OwnerPlayerId,
+                    SlotId,
+                    ParseVector(CreativePosition),
+                    Quaternion.Euler(ParseVector(CreativeRotation)),
+                    ParseVector(ReturnPosition),
+                    Quaternion.Euler(ParseVector(ReturnRotation)))
+                {
+                    AwaitingRespawn = AwaitingRespawn
+                };
+            }
+
+            public static SessionRecord FromSession(CreativeSession session)
+            {
+                return new SessionRecord
+                {
+                    PlayerId = session.PlayerId,
+                    PeerId = session.PeerId,
+                    PlayerName = session.PlayerName,
+                    OwnerPlayerId = session.OwnerPlayerId,
+                    SlotId = session.SlotId,
+                    CreativePosition = Format(session.CreativePosition),
+                    CreativeRotation = Format(session.CreativeRotation.eulerAngles),
+                    ReturnPosition = Format(session.ReturnPosition),
+                    ReturnRotation = Format(session.ReturnRotation.eulerAngles),
+                    AwaitingRespawn = session.AwaitingRespawn
+                };
+            }
+        }
+
+        private sealed class ZoneRecord
+        {
+            [JsonProperty("ownerPlayerId")]
+            public long OwnerPlayerId { get; set; }
+
+            [JsonProperty("ownerPlayerName")]
+            public string OwnerPlayerName { get; set; } = string.Empty;
+
+            [JsonProperty("slotIndex")]
+            public int SlotIndex { get; set; }
+
+            [JsonProperty("slotId")]
+            public string SlotId { get; set; } = string.Empty;
+
+            [JsonProperty("position")]
+            public string Position { get; set; } = "0,0,0";
+
+            public CreativeZone ToZone()
+            {
+                return new CreativeZone(OwnerPlayerId, OwnerPlayerName, SlotIndex, SlotId, ParseVector(Position));
+            }
+
+            public static ZoneRecord FromZone(CreativeZone zone)
+            {
+                return new ZoneRecord
+                {
+                    OwnerPlayerId = zone.OwnerPlayerId,
+                    OwnerPlayerName = zone.OwnerPlayerName,
+                    SlotIndex = zone.SlotIndex,
+                    SlotId = zone.SlotId,
+                    Position = Format(zone.Position)
+                };
+            }
+        }
+
+        private static string Format(Vector3 value)
+        {
+            return string.Join(
+                ",",
+                value.x.ToString(CultureInfo.InvariantCulture),
+                value.y.ToString(CultureInfo.InvariantCulture),
+                value.z.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static Vector3 ParseVector(string raw)
+        {
+            string[] parts = raw.Split(',');
+            if (parts.Length != 3 ||
+                !float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
+                !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
+                !float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
+            {
+                return Vector3.zero;
+            }
+
+            return new Vector3(x, y, z);
+        }
+    }
+}

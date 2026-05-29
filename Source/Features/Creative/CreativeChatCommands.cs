@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using ValheimCreative.Configuration;
 using ValheimCreative.Infrastructure.Routing;
@@ -41,7 +40,7 @@ namespace ValheimCreative.Features.Creative
                 userInfo.Deserialize(ref rpcData.m_parameters);
                 string text = rpcData.m_parameters.ReadString();
 
-                if (!TryParseCommand(text, out CreativeCommand command))
+                if (!TryParseCommand(text, out CreativeCommand command, out string inviteCode))
                 {
                     return false;
                 }
@@ -56,15 +55,27 @@ namespace ValheimCreative.Features.Creative
                     return true;
                 }
 
-                IEnumerable<string> response = command switch
-                {
-                    CreativeCommand.Enter => CreativeSessionManager.EnterCreative(rpcData.m_senderPeerID, playerZdo, userInfo.Name),
-                    CreativeCommand.Return => CreativeSessionManager.ReturnFromCreative(rpcData.m_senderPeerID, playerZdo),
-                    CreativeCommand.Status => CreativeSessionManager.GetStatus(playerZdo),
-                    _ => Array.Empty<string>()
-                };
-
                 Vector3 position = playerZdo.GetPosition() + Vector3.up * 1.8f;
+                IEnumerable<string> response;
+                if (CreativeInventoryGate.RequiresEmptyInventory(command))
+                {
+                    response = new[]
+                    {
+                        CreativeInventoryGate.Begin(
+                            command,
+                            rpcData.m_senderPeerID,
+                            playerZdo,
+                            userInfo.Name,
+                            inviteCode,
+                            userInfo,
+                            position)
+                    };
+                }
+                else
+                {
+                    response = ExecuteCommand(rpcData.m_senderPeerID, playerZdo, userInfo.Name, command, inviteCode);
+                }
+
                 foreach (string line in response)
                 {
                     SendPrivateLine(rpcData.m_senderPeerID, position, userInfo, line);
@@ -79,9 +90,28 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static bool TryParseCommand(string text, out CreativeCommand command)
+        internal static IEnumerable<string> ExecuteCommand(
+            long peerId,
+            ZDO playerZdo,
+            string fallbackName,
+            CreativeCommand command,
+            string inviteCode)
+        {
+            return command switch
+            {
+                CreativeCommand.Enter => CreativeSessionManager.EnterCreative(peerId, playerZdo, fallbackName),
+                CreativeCommand.Return => CreativeSessionManager.ReturnFromCreative(peerId, playerZdo),
+                CreativeCommand.Status => CreativeSessionManager.GetStatus(playerZdo),
+                CreativeCommand.Invite => CreativeSessionManager.GetInvite(playerZdo),
+                CreativeCommand.Join => CreativeSessionManager.JoinCreative(peerId, playerZdo, inviteCode, fallbackName),
+                _ => Array.Empty<string>()
+            };
+        }
+
+        private static bool TryParseCommand(string text, out CreativeCommand command, out string inviteCode)
         {
             command = CreativeCommand.None;
+            inviteCode = string.Empty;
             string trimmed = text.Trim();
             string creative = ModConfig.CreativeCommand.Value.Trim();
             string ret = ModConfig.ReturnCommand.Value.Trim();
@@ -104,10 +134,30 @@ namespace ValheimCreative.Features.Creative
                 return true;
             }
 
+            if (trimmed.Equals(creative + " invite", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Invite;
+                return true;
+            }
+
+            string joinPrefix = creative + " join ";
+            if (trimmed.StartsWith(joinPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                inviteCode = trimmed.Substring(joinPrefix.Length).Trim();
+                if (inviteCode.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Join;
+                return true;
+            }
+
             return false;
         }
 
-        private static void SendPrivateLine(long targetPeerId, Vector3 position, UserInfo requester, string line)
+        internal static void SendPrivateLine(long targetPeerId, Vector3 position, UserInfo requester, string line)
         {
             ZRoutedRpc.instance?.InvokeRoutedRPC(
                 targetPeerId,
@@ -118,12 +168,5 @@ namespace ValheimCreative.Features.Creative
                 "[Creative] " + line);
         }
 
-        private enum CreativeCommand
-        {
-            None,
-            Enter,
-            Return,
-            Status
-        }
     }
 }

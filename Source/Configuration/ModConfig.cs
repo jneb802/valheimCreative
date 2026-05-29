@@ -13,10 +13,16 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> CreativeSlotId = null!;
         internal static ConfigEntry<string> CreativePosition = null!;
         internal static ConfigEntry<string> CreativeRotation = null!;
+        internal static ConfigEntry<float> CreativeZoneSpacing = null!;
+        internal static ConfigEntry<bool> SpawnCreativeLocation = null!;
+        internal static ConfigEntry<string> CreativeLocationPrefab = null!;
         internal static ConfigEntry<bool> IncludeNoWorkbench = null!;
         internal static ConfigEntry<bool> IncludeNoCraftCost = null!;
+        internal static ConfigEntry<bool> RequireEmptyInventory = null!;
+        internal static ConfigEntry<float> InventoryCheckTimeoutSeconds = null!;
         internal static ConfigEntry<float> DeathRecoveryCheckSeconds = null!;
         internal static ConfigEntry<string> SessionFile = null!;
+        internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<bool> DebugLogging = null!;
 
         internal static void Bind(ConfigFile config)
@@ -54,14 +60,32 @@ namespace ValheimCreative.Configuration
             CreativePosition = config.Bind(
                 "Creative",
                 "CreativePosition",
-                "0,45,-12000",
-                "Creative zone position as x,y,z.");
+                "0,45,-13000",
+                "First creative zone origin position as x,y,z.");
 
             CreativeRotation = config.Bind(
                 "Creative",
                 "CreativeRotation",
                 "0,0,0",
                 "Creative zone rotation as x,y,z Euler angles.");
+
+            CreativeZoneSpacing = config.Bind(
+                "Creative",
+                "CreativeZoneSpacing",
+                192f,
+                "Distance between creative zone centers. Default is 3 * 64.");
+
+            SpawnCreativeLocation = config.Bind(
+                "Creative",
+                "SpawnCreativeLocation",
+                true,
+                "Spawns and registers the configured creative location the first time a player enters creative mode.");
+
+            CreativeLocationPrefab = config.Bind(
+                "Creative",
+                "CreativeLocationPrefab",
+                "StartTemple:valheim_creative",
+                "Location prefab id to spawn at the creative zone. Requires the matching Expand World Data location config.");
 
             IncludeNoWorkbench = config.Bind(
                 "Creative",
@@ -75,6 +99,18 @@ namespace ValheimCreative.Configuration
                 true,
                 "Adds a targeted NoCraftCost key during creative sessions. This is needed for build pieces whose free-build key is NoCraftCost.");
 
+            RequireEmptyInventory = config.Bind(
+                "Creative",
+                "RequireEmptyInventory",
+                true,
+                "Requires the client inventory and Shudnal ExtraSlots to be empty before entering or leaving creative zones.");
+
+            InventoryCheckTimeoutSeconds = config.Bind(
+                "Creative",
+                "InventoryCheckTimeoutSeconds",
+                5.0f,
+                "How long the server waits for the DiscordTools client inventory response before blocking the command.");
+
             DeathRecoveryCheckSeconds = config.Bind(
                 "Creative",
                 "DeathRecoveryCheckSeconds",
@@ -84,8 +120,14 @@ namespace ValheimCreative.Configuration
             SessionFile = config.Bind(
                 "Creative",
                 "SessionFile",
-                "valheimCreative.sessions.tsv",
-                "Session file path. Relative paths are resolved from BepInEx/config.");
+                "valheimCreative.sessions.json",
+                "JSON session file path. Relative paths are resolved from BepInEx/config.");
+
+            ZoneFile = config.Bind(
+                "Creative",
+                "ZoneFile",
+                "valheimCreative.zones.json",
+                "JSON creative zone allocation file path. Relative paths are resolved from BepInEx/config.");
 
             DebugLogging = config.Bind(
                 "Creative",
@@ -94,7 +136,7 @@ namespace ValheimCreative.Configuration
                 "Logs creative session decisions.");
         }
 
-        internal static Vector3 CreativePositionValue => ParseVector3(CreativePosition.Value, new Vector3(0f, 45f, -12000f));
+        internal static Vector3 CreativePositionValue => ParseVector3(CreativePosition.Value, new Vector3(0f, 45f, -13000f));
 
         internal static Quaternion CreativeRotationValue => Quaternion.Euler(ParseVector3(CreativeRotation.Value, Vector3.zero));
 

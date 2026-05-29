@@ -1,6 +1,44 @@
-# First Valdev test uses the vanilla StartTemple location.
-# Spawn it explicitly with Upgrade World / World Edit Commands:
-#   spawn_location StartTemple pos=0,-12000,45
+# Creative build zone location.
 #
-# Coordinates in Upgrade World commands use x,z,y. The mod config uses x,y,z.
-[]
+# This uses Expand World Data's official clone syntax. The base prefab is
+# StartTemple, while the :valheim_creative suffix lets us remove objects and
+# change terrain behavior without changing the normal world spawn temple.
+#
+# valheimCreative spawns and registers this location when the first player
+# enters creative mode.
+- prefab: StartTemple:valheim_creative
+  enabled: false
+  biome: Meadows
+  quantity: 0
+  exteriorRadius: 32
+  clearArea: true
+  levelArea: true
+  levelRadius: 28
+  levelBorder: 8
+  paint: paved_dirt
+  paintRadius: 30
+  paintBorder: 4
+  objects:
+    - digg_v2,0,0,0,0,0,0,1,1,1,1,creative_terrain_modifier
+  locationObjectSwap:
+    - terrain,
+    - StartPlatform,
+    - BossStone_Eikthyr,
+    - BossStone_TheElder,
+    - BossStone_Bonemass,
+    - BossStone_DragonQueen,
+    - BossStone_Yagluth,
+    - BossStone_TheQueen,
+    - BossStone_Fader,
+    - Vegvisir_Eikthyr,
+    - Rock_3_static,
+    - Bush01,
+    - Branches,
+    - GuidePoint,
+    - Pickable_Branch,
+    - Pickable_Mushroom,
+    - Pickable_Stone,
+    - RaspberryBush,
+    - Stones,
+    - StoneSpawner_TheQueen,
+    - StoneSpawner_Fader,

@@ -26,6 +26,10 @@
       <HintPath>$(BEPINEX_CORE)/0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>lib/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -56,7 +60,10 @@
       <HintPath>$(PUBLICIZED_PATH)/assembly_utils_publicized.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="SoftReferenceableAssets">
+      <HintPath>$(PUBLICIZED_PATH)/SoftReferenceableAssets_publicized.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
 </Project>
-
