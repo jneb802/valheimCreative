@@ -12,12 +12,26 @@ namespace ValheimCreative.Features.Creative
     {
         private static readonly Dictionary<long, CreativeSession> SessionsByPlayerId = new();
         private static readonly Dictionary<long, CreativeZone> ZonesByOwnerId = new();
-        private const float CreativeLocationProxySearchRadius = 64f;
-        private const float CreativeBossStoneCleanupRadius = 80f;
-        private const float CreativeBossStoneCleanupRetrySeconds = 1f;
-        private const float CreativeBossStoneCleanupDurationSeconds = 8f;
-        private static readonly string[] CreativeBossStonePrefabs = { "BossStone_TheQueen", "BossStone_Fader" };
-        private static readonly List<CreativeBossStoneCleanup> PendingBossStoneCleanups = new();
+        private const float CreativeLocationProxyCleanupRadius = 80f;
+        private const float CreativeLocationObjectCleanupRadius = 80f;
+        private const float CreativeLocationObjectCleanupRetrySeconds = 1f;
+        private const float CreativeLocationObjectCleanupDurationSeconds = 8f;
+        private const float CreativeZoneResetRadius = 128f;
+        private static readonly string[] CreativeLocationObjectCleanupPrefabs =
+        {
+            "BossStone_TheQueen",
+            "BossStone_Fader",
+            "terrain",
+            "Vegvisir_Eikthyr",
+            "Rock_3_static",
+            "StartPlatform",
+            "Branches",
+            "Stones",
+            "StoneSpawner_TheQueen",
+            "StoneSpawner_Fader"
+        };
+        private static readonly string[] CreativeToolPrefabs = { "Hoe", "Hammer", "Cultivator" };
+        private static readonly List<CreativeLocationObjectCleanup> PendingLocationObjectCleanups = new();
         private static float _nextDeathRecoveryCheck;
 
         internal static IEnumerable<string> EnterCreative(long peerId, ZDO playerZdo, string fallbackName)
@@ -184,6 +198,94 @@ namespace ValheimCreative.Features.Creative
             return Lines($"Joined {zone.OwnerPlayerName}'s creative zone. Use !return to leave.");
         }
 
+        internal static IEnumerable<string> SpawnTools(ZDO playerZdo)
+        {
+            if (!IsServerReady() || ObjectDB.instance == null)
+            {
+                return Lines("Server item data is not ready yet.");
+            }
+
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.ContainsKey(playerId))
+            {
+                return Lines("Use !creative before requesting creative tools.");
+            }
+
+            Vector3 position = playerZdo.GetPosition();
+            string playerName = GetPlayerName(playerZdo, "Creative");
+            List<string> missing = new();
+            int spawned = 0;
+
+            for (int i = 0; i < CreativeToolPrefabs.Length; i++)
+            {
+                string prefabName = CreativeToolPrefabs[i];
+                GameObject prefab = ObjectDB.instance.GetItemPrefab(prefabName);
+                ItemDrop? template = prefab != null ? prefab.GetComponent<ItemDrop>() : null;
+                if (template == null)
+                {
+                    missing.Add(prefabName);
+                    continue;
+                }
+
+                ItemDrop.ItemData item = template.m_itemData.Clone();
+                item.m_dropPrefab = prefab;
+                item.m_stack = 1;
+                item.m_quality = 1;
+                item.m_variant = 0;
+                item.m_crafterID = playerId;
+                item.m_crafterName = playerName;
+                item.m_worldLevel = (int)(byte)Game.m_worldLevel;
+                if (item.m_shared.m_useDurability)
+                {
+                    item.m_durability = item.GetMaxDurability();
+                }
+
+                Vector3 offset = new((i - 1) * 0.75f, 0.75f, 1.25f);
+                ItemDrop.DropItem(item, 1, position + offset, Quaternion.identity);
+                spawned++;
+            }
+
+            if (missing.Count > 0)
+            {
+                return Lines($"Spawned {spawned} creative tool(s). Missing: {string.Join(", ", missing)}.");
+            }
+
+            return Lines("Creative tools spawned.");
+        }
+
+        internal static IEnumerable<string> ResetCreativeZone(ZDO playerZdo)
+        {
+            if (!IsServerReady() || ZDOMan.instance == null)
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("Use !creative before resetting a creative zone.");
+            }
+
+            if (session.OwnerPlayerId != playerId)
+            {
+                return Lines("Only the creative zone owner can reset it.");
+            }
+
+            PendingLocationObjectCleanups.RemoveAll(cleanup => cleanup.SlotId.Equals(session.SlotId, StringComparison.Ordinal));
+            Vector2i zone = ZoneSystem.GetZone(session.CreativePosition);
+            ZoneSystem.instance.m_locationInstances.Remove(zone);
+            int removed = DestroyCreativeZoneZdos(session.CreativePosition);
+
+            if (!TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out string error))
+            {
+                return Lines(error);
+            }
+
+            TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
+            ValheimCreativePlugin.ModLogger.LogInfo($"Reset creative zone {session.SlotId} at {Format(session.CreativePosition)}. Removed {removed} object(s).");
+            return Lines($"Creative zone reset. Removed {removed} object(s).");
+        }
+
         internal static void Update()
         {
             if (!IsServerReady())
@@ -191,7 +293,7 @@ namespace ValheimCreative.Features.Creative
                 return;
             }
 
-            RunPendingBossStoneCleanups();
+            RunPendingLocationObjectCleanups();
 
             if (SessionsByPlayerId.Count == 0 || Time.time < _nextDeathRecoveryCheck)
             {
@@ -548,14 +650,9 @@ namespace ValheimCreative.Features.Creative
                 instance.m_location != null &&
                 instance.m_location.m_prefab.Name.Equals(locationName, StringComparison.Ordinal))
             {
-                if (HasCreativeLocationProxy(locationName, position))
-                {
-                    ScheduleCreativeBossStoneCleanup(position, slotId);
-                    return true;
-                }
-
-                ValheimCreativePlugin.ModLogger.LogInfo(
-                    $"Creative location {locationName} was registered at {Format(position)} in zone {zone}, but no LocationProxy was found; spawning it again.");
+                DestroyCreativeLocationProxies(position, locationName, slotId);
+                ScheduleCreativeLocationObjectCleanup(position, slotId);
+                return true;
             }
 
             ZoneSystem.ZoneLocation location = zoneSystem.GetLocation(locationName.GetStableHashCode());
@@ -585,8 +682,9 @@ namespace ValheimCreative.Features.Creative
                 };
 
                 ValheimCreativePlugin.ModLogger.LogInfo($"Spawned creative location {locationName} at {Format(position)} in zone {zone}.");
-                ScheduleCreativeBossStoneCleanup(position, slotId);
-                RunCreativeBossStoneCleanup(position, slotId);
+                DestroyCreativeLocationProxies(position, locationName, slotId);
+                ScheduleCreativeLocationObjectCleanup(position, slotId);
+                RunCreativeLocationObjectCleanup(position, slotId);
                 return true;
             }
             catch (Exception ex)
@@ -597,9 +695,16 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static bool HasCreativeLocationProxy(string locationName, Vector3 position)
+        private static void DestroyCreativeLocationProxies(Vector3 position, string locationName, string slotId)
         {
-            int locationHash = locationName.GetStableHashCode();
+            if (ZDOMan.instance == null)
+            {
+                return;
+            }
+
+            int removed = 0;
+            int cloneHash = locationName.GetStableHashCode();
+            int baseHash = GetBaseLocationName(locationName).GetStableHashCode();
             List<ZDO> proxies = new();
             int index = 0;
             while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative("LocationProxy", proxies, ref index))
@@ -609,35 +714,89 @@ namespace ValheimCreative.Features.Creative
             foreach (ZDO proxy in proxies)
             {
                 if (proxy == null ||
-                    proxy.GetInt(ZDOVars.s_location) != locationHash ||
-                    Utils.DistanceXZ(proxy.GetPosition(), position) > CreativeLocationProxySearchRadius)
+                    Utils.DistanceXZ(proxy.GetPosition(), position) > CreativeLocationProxyCleanupRadius)
                 {
                     continue;
                 }
 
-                return true;
+                int proxyLocation = proxy.GetInt(ZDOVars.s_location);
+                if (proxyLocation != cloneHash && proxyLocation != baseHash)
+                {
+                    continue;
+                }
+
+                if (!proxy.IsOwner())
+                {
+                    proxy.SetOwner(ZDOMan.GetSessionID());
+                }
+
+                ZDOMan.instance.DestroyZDO(proxy);
+                removed++;
             }
 
-            return false;
+            if (removed > 0)
+            {
+                ValheimCreativePlugin.ModLogger.LogInfo($"Removed {removed} creative location proxy object(s) from creative zone {slotId}.");
+            }
         }
 
-        private static void ScheduleCreativeBossStoneCleanup(Vector3 position, string slotId)
+        private static int DestroyCreativeZoneZdos(Vector3 position)
         {
-            PendingBossStoneCleanups.RemoveAll(cleanup => cleanup.SlotId.Equals(slotId, StringComparison.Ordinal));
-            PendingBossStoneCleanups.Add(new CreativeBossStoneCleanup(
+            List<ZDO> objects = new();
+            ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(position), 2, 0, objects);
+            int removed = 0;
+
+            foreach (ZDO zdo in objects.Distinct())
+            {
+                if (zdo == null ||
+                    !zdo.IsValid() ||
+                    IsPlayerZdo(zdo) ||
+                    Utils.DistanceXZ(zdo.GetPosition(), position) > CreativeZoneResetRadius)
+                {
+                    continue;
+                }
+
+                if (!zdo.IsOwner())
+                {
+                    zdo.SetOwner(ZDOMan.GetSessionID());
+                }
+
+                ZDOMan.instance.DestroyZDO(zdo);
+                removed++;
+            }
+
+            return removed;
+        }
+
+        private static bool IsPlayerZdo(ZDO zdo)
+        {
+            return zdo.GetLong(ZDOVars.s_playerID) != 0L ||
+                   zdo.GetPrefab() == "Player".GetStableHashCode();
+        }
+
+        private static string GetBaseLocationName(string locationName)
+        {
+            int separator = locationName.IndexOf(':');
+            return separator > 0 ? locationName.Substring(0, separator) : locationName;
+        }
+
+        private static void ScheduleCreativeLocationObjectCleanup(Vector3 position, string slotId)
+        {
+            PendingLocationObjectCleanups.RemoveAll(cleanup => cleanup.SlotId.Equals(slotId, StringComparison.Ordinal));
+            PendingLocationObjectCleanups.Add(new CreativeLocationObjectCleanup(
                 position,
                 slotId,
-                Time.time + CreativeBossStoneCleanupDurationSeconds));
+                Time.time + CreativeLocationObjectCleanupDurationSeconds));
         }
 
-        private static void RunPendingBossStoneCleanups()
+        private static void RunPendingLocationObjectCleanups()
         {
             float now = Time.time;
-            foreach (CreativeBossStoneCleanup cleanup in PendingBossStoneCleanups.ToList())
+            foreach (CreativeLocationObjectCleanup cleanup in PendingLocationObjectCleanups.ToList())
             {
                 if (now >= cleanup.Until)
                 {
-                    PendingBossStoneCleanups.Remove(cleanup);
+                    PendingLocationObjectCleanups.Remove(cleanup);
                     continue;
                 }
 
@@ -646,12 +805,12 @@ namespace ValheimCreative.Features.Creative
                     continue;
                 }
 
-                cleanup.NextRun = now + CreativeBossStoneCleanupRetrySeconds;
-                RunCreativeBossStoneCleanup(cleanup.Position, cleanup.SlotId);
+                cleanup.NextRun = now + CreativeLocationObjectCleanupRetrySeconds;
+                RunCreativeLocationObjectCleanup(cleanup.Position, cleanup.SlotId);
             }
         }
 
-        private static void RunCreativeBossStoneCleanup(Vector3 position, string slotId)
+        private static void RunCreativeLocationObjectCleanup(Vector3 position, string slotId)
         {
             if (ZDOMan.instance == null)
             {
@@ -659,35 +818,35 @@ namespace ValheimCreative.Features.Creative
             }
 
             int removed = 0;
-            foreach (string prefabName in CreativeBossStonePrefabs)
+            foreach (string prefabName in CreativeLocationObjectCleanupPrefabs)
             {
-                List<ZDO> stones = new();
+                List<ZDO> objects = new();
                 int index = 0;
-                while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative(prefabName, stones, ref index))
+                while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative(prefabName, objects, ref index))
                 {
                 }
 
-                foreach (ZDO stone in stones)
+                foreach (ZDO zdo in objects)
                 {
-                    if (stone == null ||
-                        Utils.DistanceXZ(stone.GetPosition(), position) > CreativeBossStoneCleanupRadius)
+                    if (zdo == null ||
+                        Utils.DistanceXZ(zdo.GetPosition(), position) > CreativeLocationObjectCleanupRadius)
                     {
                         continue;
                     }
 
-                    if (!stone.IsOwner())
+                    if (!zdo.IsOwner())
                     {
-                        stone.SetOwner(ZDOMan.GetSessionID());
+                        zdo.SetOwner(ZDOMan.GetSessionID());
                     }
 
-                    ZDOMan.instance.DestroyZDO(stone);
+                    ZDOMan.instance.DestroyZDO(zdo);
                     removed++;
                 }
             }
 
             if (removed > 0)
             {
-                ValheimCreativePlugin.ModLogger.LogInfo($"Removed {removed} delayed boss stone(s) from creative zone {slotId}.");
+                ValheimCreativePlugin.ModLogger.LogInfo($"Removed {removed} delayed location object(s) from creative zone {slotId}.");
             }
         }
 
@@ -783,9 +942,9 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private sealed class CreativeBossStoneCleanup
+        private sealed class CreativeLocationObjectCleanup
         {
-            internal CreativeBossStoneCleanup(Vector3 position, string slotId, float until)
+            internal CreativeLocationObjectCleanup(Vector3 position, string slotId, float until)
             {
                 Position = position;
                 SlotId = slotId;

@@ -104,6 +104,8 @@ namespace ValheimCreative.Features.Creative
                 CreativeCommand.Status => CreativeSessionManager.GetStatus(playerZdo),
                 CreativeCommand.Invite => CreativeSessionManager.GetInvite(playerZdo),
                 CreativeCommand.Join => CreativeSessionManager.JoinCreative(peerId, playerZdo, inviteCode, fallbackName),
+                CreativeCommand.Tools => CreativeSessionManager.SpawnTools(playerZdo),
+                CreativeCommand.Reset => CreativeSessionManager.ResetCreativeZone(playerZdo),
                 _ => Array.Empty<string>()
             };
         }
@@ -137,6 +139,18 @@ namespace ValheimCreative.Features.Creative
             if (trimmed.Equals(creative + " invite", StringComparison.OrdinalIgnoreCase))
             {
                 command = CreativeCommand.Invite;
+                return true;
+            }
+
+            if (trimmed.Equals(creative + " tools", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Tools;
+                return true;
+            }
+
+            if (trimmed.Equals(creative + " reset", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Reset;
                 return true;
             }
 

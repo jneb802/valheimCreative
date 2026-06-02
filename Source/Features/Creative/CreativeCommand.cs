@@ -7,6 +7,8 @@ namespace ValheimCreative.Features.Creative
         Return,
         Status,
         Invite,
-        Join
+        Join,
+        Tools,
+        Reset
     }
 }
