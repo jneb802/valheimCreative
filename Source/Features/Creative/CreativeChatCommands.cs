@@ -22,6 +22,7 @@ namespace ValheimCreative.Features.Creative
 
         private static bool TryConsume(ZRoutedRpc.RoutedRPCData rpcData)
         {
+            int originalPosition = rpcData.m_parameters.GetPos();
             if (!ModConfig.EnableCreativeCommands.Value || ZNet.instance == null || !ZNet.instance.IsServer())
             {
                 return false;
@@ -42,6 +43,12 @@ namespace ValheimCreative.Features.Creative
 
                 if (!TryParseCommand(text, out CreativeCommand command, out string inviteCode))
                 {
+                    if (text.TrimStart().StartsWith("!", StringComparison.Ordinal))
+                    {
+                        ValheimCreativePlugin.ModLogger.LogInfo(
+                            $"Ignored chat command text '{text}' from peer {rpcData.m_senderPeerID}; targetPeer={rpcData.m_targetPeerID} targetZdo={rpcData.m_targetZDO}.");
+                    }
+                    rpcData.m_parameters.SetPos(originalPosition);
                     return false;
                 }
 
@@ -99,6 +106,7 @@ namespace ValheimCreative.Features.Creative
             }
             catch (Exception ex)
             {
+                rpcData.m_parameters.SetPos(originalPosition);
                 ValheimCreativePlugin.ModLogger.LogWarning($"Failed to handle creative chat command: {ex}");
                 return false;
             }
