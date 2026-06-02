@@ -45,6 +45,11 @@ namespace ValheimCreative.Features.Creative
                     return false;
                 }
 
+                if (!IsCommandExecutionCopy(rpcData))
+                {
+                    return true;
+                }
+
                 ZDO? playerZdo = CreativeSessionManager.FindPlayerZdo(rpcData.m_targetZDO);
                 if (playerZdo == null)
                 {
@@ -52,6 +57,15 @@ namespace ValheimCreative.Features.Creative
                         $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: player was not found. " +
                         CreativeSessionManager.DescribePlayerLookup(rpcData.m_targetZDO));
                     SendPrivateLine(rpcData.m_senderPeerID, Vector3.zero, userInfo, "Creative command failed: player was not found.");
+                    return true;
+                }
+
+                if (!IsSenderCharacter(rpcData, playerZdo))
+                {
+                    ValheimCreativePlugin.ModLogger.LogWarning(
+                        $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: target ZDO is not owned by sender. " +
+                        CreativeSessionManager.DescribePlayerLookup(rpcData.m_targetZDO));
+                    SendPrivateLine(rpcData.m_senderPeerID, Vector3.zero, userInfo, "Creative command failed: player ownership mismatch.");
                     return true;
                 }
 
@@ -199,6 +213,18 @@ namespace ValheimCreative.Features.Creative
             }
 
             return false;
+        }
+
+        private static bool IsCommandExecutionCopy(ZRoutedRpc.RoutedRPCData rpcData)
+        {
+            return rpcData.m_targetPeerID == rpcData.m_senderPeerID ||
+                   rpcData.m_targetPeerID == ZRoutedRpc.Everybody;
+        }
+
+        private static bool IsSenderCharacter(ZRoutedRpc.RoutedRPCData rpcData, ZDO playerZdo)
+        {
+            long owner = playerZdo.GetOwner();
+            return owner == rpcData.m_senderPeerID;
         }
 
         internal static void SendPrivateLine(long targetPeerId, Vector3 position, UserInfo requester, string line)
