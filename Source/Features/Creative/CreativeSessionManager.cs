@@ -30,7 +30,7 @@ namespace ValheimCreative.Features.Creative
             "StoneSpawner_TheQueen",
             "StoneSpawner_Fader"
         };
-        private static readonly string[] CreativeToolPrefabs = { "Hoe", "Hammer", "Cultivator" };
+        private static readonly string[] CreativeToolPrefabs = { "Hoe", "Hammer", "Cultivator", "PickaxeAntler" };
         private static readonly List<CreativeLocationObjectCleanup> PendingLocationObjectCleanups = new();
         private static float _nextDeathRecoveryCheck;
 
