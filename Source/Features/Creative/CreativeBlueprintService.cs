@@ -84,6 +84,7 @@ namespace ValheimCreative.Features.Creative
 
             Quaternion zoneRotation = session.CreativeRotation;
             Vector3 origin = session.CreativePosition;
+            Vector3 loadAnchor = GetLoadAnchor(blueprint);
             HashSet<string> missing = new(StringComparer.Ordinal);
             foreach (BlueprintPieceEntry piece in blueprint.Pieces)
             {
@@ -95,7 +96,7 @@ namespace ValheimCreative.Features.Creative
                     continue;
                 }
 
-                Vector3 position = origin + zoneRotation * piece.LocalPosition;
+                Vector3 position = origin + zoneRotation * (piece.LocalPosition - loadAnchor);
                 Quaternion rotation = zoneRotation * piece.LocalRotation;
                 GameObject instance = UnityEngine.Object.Instantiate(prefab, position, rotation);
                 if (piece.Scale != Vector3.one)
@@ -135,6 +136,24 @@ namespace ValheimCreative.Features.Creative
 
             missingPrefabs = missing.OrderBy(name => name, StringComparer.Ordinal).ToList();
             return true;
+        }
+
+        private static Vector3 GetLoadAnchor(BlueprintFile blueprint)
+        {
+            if (blueprint.Pieces.Count == 0)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 min = blueprint.Pieces[0].LocalPosition;
+            Vector3 max = blueprint.Pieces[0].LocalPosition;
+            foreach (BlueprintPieceEntry piece in blueprint.Pieces)
+            {
+                min = Vector3.Min(min, piece.LocalPosition);
+                max = Vector3.Max(max, piece.LocalPosition);
+            }
+
+            return new Vector3((min.x + max.x) * 0.5f, min.y, (min.z + max.z) * 0.5f);
         }
 
         internal static bool TrySaveBlueprint(
