@@ -7,10 +7,11 @@ namespace ValheimCreative.Patches
     internal static class ZRoutedRpcRouteRpcPatch
     {
         [HarmonyPriority(Priority.First)]
-        [HarmonyBefore("expand_world_prefabs", "redseiko.valheim.enroute")]
+        [HarmonyBefore("redseiko.valheim.enroute")]
         private static bool Prefix(ZRoutedRpc.RoutedRPCData rpcData)
         {
             return RoutedRpcDispatcher.Process(rpcData);
         }
     }
 }
+
