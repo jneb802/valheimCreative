@@ -321,6 +321,22 @@ namespace ValheimCreative.Features.Creative
             return Lines($"Blueprint loaded. Spawned {spawned} object(s).");
         }
 
+        internal static IEnumerable<string> LoadBlueprintForPlayerId(long playerId, string fileName)
+        {
+            if (!IsServerReady())
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            ZDO? playerZdo = FindPlayerZdo(playerId);
+            if (playerZdo == null)
+            {
+                return Lines($"Player {playerId} was not found online.");
+            }
+
+            return LoadBlueprint(playerZdo, fileName);
+        }
+
         internal static IEnumerable<string> SaveBlueprint(ZDO playerZdo, string fileName)
         {
             long playerId = GetPlayerId(playerZdo);
