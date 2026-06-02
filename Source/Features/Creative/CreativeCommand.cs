@@ -9,6 +9,8 @@ namespace ValheimCreative.Features.Creative
         Invite,
         Join,
         Tools,
-        Reset
+        Reset,
+        Load,
+        Save
     }
 }
