@@ -286,6 +286,70 @@ namespace ValheimCreative.Features.Creative
             return Lines($"Creative zone reset. Removed {removed} object(s).");
         }
 
+        internal static IEnumerable<string> LoadBlueprint(ZDO playerZdo, string fileName)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("Use !creative before loading a blueprint.");
+            }
+
+            if (!TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out string locationError))
+            {
+                return Lines(locationError);
+            }
+
+            if (!CreativeBlueprintService.TryLoadBlueprint(
+                    fileName,
+                    session,
+                    session.OwnerPlayerId,
+                    out int spawned,
+                    out List<string> missingPrefabs,
+                    out string error))
+            {
+                return Lines(error);
+            }
+
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Loaded blueprint {fileName} into {session.SlotId} at {Format(session.CreativePosition)}. Spawned {spawned} object(s), missing {missingPrefabs.Count} prefab(s).");
+
+            if (missingPrefabs.Count > 0)
+            {
+                return Lines($"Blueprint loaded. Spawned {spawned} object(s). Missing prefabs: {string.Join(", ", missingPrefabs.Take(8))}{(missingPrefabs.Count > 8 ? "..." : "")}.");
+            }
+
+            return Lines($"Blueprint loaded. Spawned {spawned} object(s).");
+        }
+
+        internal static IEnumerable<string> SaveBlueprint(ZDO playerZdo, string fileName)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("Use !creative before saving a blueprint.");
+            }
+
+            if (session.OwnerPlayerId != playerId)
+            {
+                return Lines("Only the creative zone owner can save it.");
+            }
+
+            if (!CreativeBlueprintService.TrySaveBlueprint(
+                    fileName,
+                    session,
+                    playerId,
+                    GetPlayerName(playerZdo, session.PlayerName),
+                    out int saved,
+                    out string error))
+            {
+                return Lines(error);
+            }
+
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Saved blueprint {fileName} from {session.SlotId} at {Format(session.CreativePosition)} with {saved} piece(s).");
+            return Lines($"Blueprint saved. Wrote {saved} piece(s).");
+        }
+
         internal static void Update()
         {
             if (!IsServerReady())

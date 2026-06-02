@@ -23,6 +23,8 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> DeathRecoveryCheckSeconds = null!;
         internal static ConfigEntry<string> SessionFile = null!;
         internal static ConfigEntry<string> ZoneFile = null!;
+        internal static ConfigEntry<string> BlueprintDirectory = null!;
+        internal static ConfigEntry<float> BlueprintSaveRadius = null!;
         internal static ConfigEntry<bool> DebugLogging = null!;
 
         internal static void Bind(ConfigFile config)
@@ -128,6 +130,18 @@ namespace ValheimCreative.Configuration
                 "ZoneFile",
                 "valheimCreative.zones.json",
                 "JSON creative zone allocation file path. Relative paths are resolved from BepInEx/config.");
+
+            BlueprintDirectory = config.Bind(
+                "Blueprints",
+                "BlueprintDirectory",
+                "expand_world/blueprints",
+                "Blueprint directory. Relative paths are resolved from BepInEx/config.");
+
+            BlueprintSaveRadius = config.Bind(
+                "Blueprints",
+                "BlueprintSaveRadius",
+                128f,
+                "Maximum distance from the creative zone origin included by !creative save.");
 
             DebugLogging = config.Bind(
                 "Creative",

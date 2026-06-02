@@ -106,6 +106,8 @@ namespace ValheimCreative.Features.Creative
                 CreativeCommand.Join => CreativeSessionManager.JoinCreative(peerId, playerZdo, inviteCode, fallbackName),
                 CreativeCommand.Tools => CreativeSessionManager.SpawnTools(playerZdo),
                 CreativeCommand.Reset => CreativeSessionManager.ResetCreativeZone(playerZdo),
+                CreativeCommand.Load => CreativeSessionManager.LoadBlueprint(playerZdo, inviteCode),
+                CreativeCommand.Save => CreativeSessionManager.SaveBlueprint(playerZdo, inviteCode),
                 _ => Array.Empty<string>()
             };
         }
@@ -151,6 +153,34 @@ namespace ValheimCreative.Features.Creative
             if (trimmed.Equals(creative + " reset", StringComparison.OrdinalIgnoreCase))
             {
                 command = CreativeCommand.Reset;
+                return true;
+            }
+
+            string loadPrefix = creative + " load ";
+            if (trimmed.StartsWith(loadPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                inviteCode = trimmed.Substring(loadPrefix.Length).Trim();
+                if (inviteCode.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Load;
+                return true;
+            }
+
+            string savePrefix = creative + " save ";
+            if (trimmed.StartsWith(savePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                inviteCode = trimmed.Substring(savePrefix.Length).Trim();
+                if (inviteCode.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Save;
                 return true;
             }
 
