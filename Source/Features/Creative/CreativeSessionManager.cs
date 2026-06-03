@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using BepInEx;
@@ -328,10 +329,21 @@ namespace ValheimCreative.Features.Creative
                 return Lines("Server is not ready yet.");
             }
 
+            string platformId = playerId.ToString(CultureInfo.InvariantCulture);
             ZDO? playerZdo = FindPlayerZdo(playerId);
             if (playerZdo == null)
             {
-                return Lines($"Player {playerId} was not found online.");
+                playerZdo = FindPlayerZdoByPlatformId(platformId, out string matchedIdentifier);
+                if (playerZdo != null)
+                {
+                    ValheimCreativePlugin.ModLogger.LogInfo(
+                        $"Matched creative load target {playerId} to online platform identifier {matchedIdentifier}.");
+                }
+            }
+
+            if (playerZdo == null)
+            {
+                return Lines($"Player {playerId} was not found online by Valheim player ID or platform ID.");
             }
 
             return LoadBlueprint(playerZdo, fileName);
@@ -648,6 +660,66 @@ namespace ValheimCreative.Features.Creative
             }
 
             return null;
+        }
+
+        private static ZDO? FindPlayerZdoByPlatformId(string platformId, out string matchedIdentifier)
+        {
+            matchedIdentifier = string.Empty;
+            if (ZNet.instance == null || ZDOMan.instance == null || string.IsNullOrWhiteSpace(platformId))
+            {
+                return null;
+            }
+
+            foreach (ZNetPeer peer in ZNet.instance.m_peers)
+            {
+                if (peer.m_characterID.IsNone())
+                {
+                    continue;
+                }
+
+                if (!TryGetMatchingPlatformIdentifier(peer, platformId, out matchedIdentifier))
+                {
+                    continue;
+                }
+
+                return ZDOMan.instance.GetZDO(peer.m_characterID);
+            }
+
+            matchedIdentifier = string.Empty;
+            return null;
+        }
+
+        private static bool TryGetMatchingPlatformIdentifier(ZNetPeer peer, string platformId, out string matchedIdentifier)
+        {
+            matchedIdentifier = string.Empty;
+            foreach (string identifier in GetPeerPlatformIdentifiers(peer))
+            {
+                if (identifier.Equals(platformId, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedIdentifier = identifier;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> GetPeerPlatformIdentifiers(ZNetPeer peer)
+        {
+            if (peer.m_socket != null)
+            {
+                string hostName = peer.m_socket.GetHostName();
+                if (!string.IsNullOrWhiteSpace(hostName))
+                {
+                    yield return hostName;
+                }
+
+                string endPoint = peer.m_socket.GetEndPointString();
+                if (!string.IsNullOrWhiteSpace(endPoint))
+                {
+                    yield return endPoint;
+                }
+            }
         }
 
         private static bool IsServerReady()
