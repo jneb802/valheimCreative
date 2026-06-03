@@ -4,7 +4,6 @@ using BepInEx.Logging;
 using HarmonyLib;
 using ValheimCreative.Configuration;
 using ValheimCreative.Features.Creative;
-using ValheimCreative.Infrastructure.Routing;
 
 namespace ValheimCreative
 {
@@ -13,7 +12,7 @@ namespace ValheimCreative
     {
         internal const string ModGuid = "warpalicious.valheimCreative";
         internal const string ModName = "valheimCreative";
-        internal const string ModVersion = "0.1.0";
+        internal const string ModVersion = "0.2.1";
 
         private readonly Harmony _harmony = new(ModGuid);
 
@@ -22,9 +21,8 @@ namespace ValheimCreative
         public void Awake()
         {
             ModConfig.Bind(Config);
-            RoutedRpcDispatcher.Clear();
-            CreativeChatCommands.RegisterRoutedRpcHandlers();
             CreativeInventoryGate.RegisterRoutedRpcHandler();
+            CreativeConsoleCommands.Register();
             CreativeSessionManager.Load();
 
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
