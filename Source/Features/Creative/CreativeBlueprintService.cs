@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using BepInEx;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using ValheimCreative.Configuration;
 
@@ -85,6 +86,8 @@ namespace ValheimCreative.Features.Creative
             Quaternion zoneRotation = session.CreativeRotation;
             Vector3 origin = session.CreativePosition;
             Vector3 loadAnchor = GetLoadAnchor(blueprint);
+            float loadYOffset = GetLoadYOffset(safeName);
+            Vector3 loadOffset = new Vector3(0f, loadYOffset, 0f);
             HashSet<string> missing = new(StringComparer.Ordinal);
             foreach (BlueprintPieceEntry piece in blueprint.Pieces)
             {
@@ -96,7 +99,7 @@ namespace ValheimCreative.Features.Creative
                     continue;
                 }
 
-                Vector3 position = origin + zoneRotation * (piece.LocalPosition - loadAnchor);
+                Vector3 position = origin + loadOffset + zoneRotation * (piece.LocalPosition - loadAnchor);
                 Quaternion rotation = zoneRotation * piece.LocalRotation;
                 GameObject instance = UnityEngine.Object.Instantiate(prefab, position, rotation);
                 if (piece.Scale != Vector3.one)
@@ -154,6 +157,80 @@ namespace ValheimCreative.Features.Creative
             }
 
             return new Vector3((min.x + max.x) * 0.5f, min.y, (min.z + max.z) * 0.5f);
+        }
+
+        private static float GetLoadYOffset(string blueprintFileName)
+        {
+            string path = GetBlueprintLoadOffsetsPath();
+            if (!File.Exists(path))
+            {
+                return 0f;
+            }
+
+            try
+            {
+                JObject root = JObject.Parse(File.ReadAllText(path));
+                JToken? entry = FindLoadOffsetEntry(root, blueprintFileName);
+                if (entry == null)
+                {
+                    return 0f;
+                }
+
+                if (entry.Type == JTokenType.Object)
+                {
+                    entry = entry["loadYOffset"];
+                }
+
+                return entry != null && TryParseLoadYOffset(entry, out float offset) ? offset : 0f;
+            }
+            catch (Exception ex)
+            {
+                if (ModConfig.DebugLogging.Value)
+                {
+                    ValheimCreativePlugin.ModLogger.LogWarning($"Could not read blueprint load offsets from {path}: {ex.Message}");
+                }
+                return 0f;
+            }
+        }
+
+        private static string GetBlueprintLoadOffsetsPath()
+        {
+            string fileName = Path.GetFileName(ModConfig.BlueprintLoadOffsetsFile.Value.Trim());
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = "blueprint-load-offsets.json";
+            }
+
+            return Path.Combine(GetBlueprintDirectory(), fileName);
+        }
+
+        private static JToken? FindLoadOffsetEntry(JObject root, string blueprintFileName)
+        {
+            JObject? entries = root["blueprints"] as JObject ?? root;
+            string normalizedFileName = blueprintFileName.Trim().ToLowerInvariant();
+            string normalizedStem = Path.GetFileNameWithoutExtension(normalizedFileName);
+
+            foreach (JProperty property in entries.Properties())
+            {
+                string key = property.Name.Trim().ToLowerInvariant();
+                if (key == normalizedFileName || key == normalizedStem)
+                {
+                    return property.Value;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryParseLoadYOffset(JToken token, out float offset)
+        {
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                offset = token.Value<float>();
+                return true;
+            }
+
+            return float.TryParse(token.ToString().Trim(), NumberStyles.Float, Invariant, out offset);
         }
 
         internal static bool TrySaveBlueprint(

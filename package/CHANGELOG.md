@@ -1,3 +1,8 @@
+# 0.2.1
+
+- Added `loadYOffset` support for per-blueprint vertical placement adjustment.
+- Allowed `creative_load_player` to target either a Valheim player ID or the player's platform ID, so Discord-triggered loads can resolve linked Steam users.
+
 # 0.2.0
 
 - Added `!creative load <blueprintName>` and `!creative reset` support for creative-zone blueprint validation.

@@ -22,18 +22,18 @@ namespace ValheimCreative.Features.Creative
 
             _ = new Terminal.ConsoleCommand(
                 LoadPlayerCommand,
-                "Load a blueprint into an online player's active creative zone. Usage: creative_load_player <playerId> <blueprintName>",
+                "Load a blueprint into an online player's active creative zone. Usage: creative_load_player <playerIdOrPlatformId> <blueprintName>",
                 args =>
                 {
                     if (args.Length < 3)
                     {
-                        args.Context.AddString("Usage: creative_load_player <playerId> <blueprintName>");
+                        args.Context.AddString("Usage: creative_load_player <playerIdOrPlatformId> <blueprintName>");
                         return;
                     }
 
                     if (!args.TryParameterLong(1, out long playerId) || playerId == 0L)
                     {
-                        args.Context.AddString("playerId must be a non-zero number.");
+                        args.Context.AddString("playerIdOrPlatformId must be a non-zero number.");
                         return;
                     }
 

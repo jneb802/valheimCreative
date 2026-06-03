@@ -24,6 +24,7 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> SessionFile = null!;
         internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<string> BlueprintDirectory = null!;
+        internal static ConfigEntry<string> BlueprintLoadOffsetsFile = null!;
         internal static ConfigEntry<float> BlueprintSaveRadius = null!;
         internal static ConfigEntry<bool> DebugLogging = null!;
 
@@ -136,6 +137,12 @@ namespace ValheimCreative.Configuration
                 "BlueprintDirectory",
                 "expand_world/blueprints",
                 "Blueprint directory. Relative paths are resolved from BepInEx/config.");
+
+            BlueprintLoadOffsetsFile = config.Bind(
+                "Blueprints",
+                "BlueprintLoadOffsetsFile",
+                "blueprint-load-offsets.json",
+                "JSON file in the blueprint directory that maps deployed blueprint filenames to loadYOffset values.");
 
             BlueprintSaveRadius = config.Bind(
                 "Blueprints",

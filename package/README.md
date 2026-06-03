@@ -16,3 +16,7 @@ Invite commands:
 !creative invite
 !creative join CODE
 ```
+
+Blueprint loads can be height-adjusted with `blueprint-load-offsets.json` in
+the configured blueprint directory. Use deployed filenames as keys and
+`loadYOffset` values in meters. Negative values lower the loaded build.

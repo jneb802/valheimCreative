@@ -36,6 +36,24 @@ Install `valheimCreative.dll` on the dedicated server.
 !creative join CODE
 ```
 
+## Blueprint load offsets
+
+Loaded blueprints are anchored by their bottom-center bounds. To adjust one
+blueprint after that anchor is calculated, create
+`blueprint-load-offsets.json` in the configured blueprint directory:
+
+```json
+{
+  "blueprints": {
+    "the_midnight_tavern.blueprint": {
+      "loadYOffset": -1.0
+    }
+  }
+}
+```
+
+Negative `loadYOffset` values lower the loaded build. Positive values raise it.
+
 ## Expand World files
 
 Packaged config templates live in `package/BepInEx/config/expand_world/`.
