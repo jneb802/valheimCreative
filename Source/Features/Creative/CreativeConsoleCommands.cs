@@ -6,9 +6,20 @@ namespace ValheimCreative.Features.Creative
     internal static class CreativeConsoleCommands
     {
         private const string LoadPlayerCommand = "creative_load_player";
+        private static bool _registered;
 
         private static void Postfix()
         {
+            Register();
+        }
+
+        internal static void Register()
+        {
+            if (_registered && Terminal.commands.ContainsKey(LoadPlayerCommand))
+            {
+                return;
+            }
+
             _ = new Terminal.ConsoleCommand(
                 LoadPlayerCommand,
                 "Load a blueprint into an online player's active creative zone. Usage: creative_load_player <playerId> <blueprintName>",
@@ -38,6 +49,7 @@ namespace ValheimCreative.Features.Creative
                         args.Context.AddString(line);
                     }
                 });
+            _registered = true;
         }
     }
 }
