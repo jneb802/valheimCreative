@@ -4,7 +4,6 @@ using BepInEx.Logging;
 using HarmonyLib;
 using ValheimCreative.Configuration;
 using ValheimCreative.Features.Creative;
-using ValheimCreative.Infrastructure.Routing;
 
 namespace ValheimCreative
 {
@@ -22,8 +21,6 @@ namespace ValheimCreative
         public void Awake()
         {
             ModConfig.Bind(Config);
-            RoutedRpcDispatcher.Clear();
-            CreativeChatCommands.RegisterRoutedRpcHandlers();
             CreativeInventoryGate.RegisterRoutedRpcHandler();
             CreativeSessionManager.Load();
 

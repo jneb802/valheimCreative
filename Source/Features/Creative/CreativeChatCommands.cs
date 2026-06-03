@@ -2,25 +2,16 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using ValheimCreative.Configuration;
-using ValheimCreative.Infrastructure.Routing;
 
 namespace ValheimCreative.Features.Creative
 {
     internal static class CreativeChatCommands
     {
         private static readonly int SayHash = "Say".GetStableHashCode();
+        private const float CommandDedupeSeconds = 1f;
+        private static readonly Dictionary<string, float> RecentCommands = new();
 
-        internal static void RegisterRoutedRpcHandlers()
-        {
-            RoutedRpcDispatcher.Register("Say", HandleSay);
-        }
-
-        private static RoutedRpcAction HandleSay(ZRoutedRpc.RoutedRPCData rpcData)
-        {
-            return TryConsume(rpcData) ? RoutedRpcAction.Consume : RoutedRpcAction.Continue;
-        }
-
-        private static bool TryConsume(ZRoutedRpc.RoutedRPCData rpcData)
+        internal static bool TryConsumeRoutedSay(ZRoutedRpc.RoutedRPCData rpcData)
         {
             if (!ModConfig.EnableCreativeCommands.Value || ZNet.instance == null || !ZNet.instance.IsServer())
             {
@@ -45,7 +36,7 @@ namespace ValheimCreative.Features.Creative
                     return false;
                 }
 
-                if (!IsCommandExecutionCopy(rpcData))
+                if (IsDuplicateCommand(rpcData, text))
                 {
                     return true;
                 }
@@ -57,15 +48,6 @@ namespace ValheimCreative.Features.Creative
                         $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: player was not found. " +
                         CreativeSessionManager.DescribePlayerLookup(rpcData.m_targetZDO));
                     SendPrivateLine(rpcData.m_senderPeerID, Vector3.zero, userInfo, "Creative command failed: player was not found.");
-                    return true;
-                }
-
-                if (!IsSenderCharacter(rpcData, playerZdo))
-                {
-                    ValheimCreativePlugin.ModLogger.LogWarning(
-                        $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: target ZDO is not owned by sender. " +
-                        CreativeSessionManager.DescribePlayerLookup(rpcData.m_targetZDO));
-                    SendPrivateLine(rpcData.m_senderPeerID, Vector3.zero, userInfo, "Creative command failed: player ownership mismatch.");
                     return true;
                 }
 
@@ -102,6 +84,37 @@ namespace ValheimCreative.Features.Creative
                 ValheimCreativePlugin.ModLogger.LogWarning($"Failed to handle creative chat command: {ex}");
                 return false;
             }
+            finally
+            {
+                rpcData.m_parameters.SetPos(0);
+            }
+        }
+
+        private static bool IsDuplicateCommand(ZRoutedRpc.RoutedRPCData rpcData, string text)
+        {
+            float now = Time.realtimeSinceStartup;
+            List<string> expired = new();
+            foreach (KeyValuePair<string, float> recent in RecentCommands)
+            {
+                if (now - recent.Value > CommandDedupeSeconds)
+                {
+                    expired.Add(recent.Key);
+                }
+            }
+
+            foreach (string keyToRemove in expired)
+            {
+                RecentCommands.Remove(keyToRemove);
+            }
+
+            string key = $"{rpcData.m_senderPeerID}:{rpcData.m_targetZDO.UserID}:{rpcData.m_targetZDO.ID}:{text.Trim().ToLowerInvariant()}";
+            if (RecentCommands.TryGetValue(key, out float seenAt) && now - seenAt <= CommandDedupeSeconds)
+            {
+                return true;
+            }
+
+            RecentCommands[key] = now;
+            return false;
         }
 
         internal static IEnumerable<string> ExecuteCommand(
@@ -213,18 +226,6 @@ namespace ValheimCreative.Features.Creative
             }
 
             return false;
-        }
-
-        private static bool IsCommandExecutionCopy(ZRoutedRpc.RoutedRPCData rpcData)
-        {
-            return rpcData.m_targetPeerID == rpcData.m_senderPeerID ||
-                   rpcData.m_targetPeerID == ZRoutedRpc.Everybody;
-        }
-
-        private static bool IsSenderCharacter(ZRoutedRpc.RoutedRPCData rpcData, ZDO playerZdo)
-        {
-            long owner = playerZdo.GetOwner();
-            return owner == rpcData.m_senderPeerID;
         }
 
         internal static void SendPrivateLine(long targetPeerId, Vector3 position, UserInfo requester, string line)
