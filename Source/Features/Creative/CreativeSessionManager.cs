@@ -62,11 +62,6 @@ namespace ValheimCreative.Features.Creative
                 return Lines("Creative session restored.");
             }
 
-            if (ModConfig.RequireBed.Value && !IsInBed(playerZdo))
-            {
-                return Lines("Lie in your bed before using !creative.");
-            }
-
             string playerName = GetPlayerName(playerZdo, fallbackName);
             CreativeZone zone = GetOrCreateZone(playerId, playerName);
             if (!TryEnsureCreativeLocation(zone.Position, zone.SlotId, out string newLocationError))
@@ -734,11 +729,6 @@ namespace ValheimCreative.Features.Creative
                    ZNet.instance.IsServer() &&
                    ZRoutedRpc.instance != null &&
                    ZoneSystem.instance != null;
-        }
-
-        private static bool IsInBed(ZDO playerZdo)
-        {
-            return playerZdo.GetBool(ZDOVars.s_inBed);
         }
 
         private static bool IsDead(ZDO playerZdo)

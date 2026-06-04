@@ -7,7 +7,6 @@ namespace ValheimCreative.Configuration
     internal static class ModConfig
     {
         internal static ConfigEntry<bool> EnableCreativeCommands = null!;
-        internal static ConfigEntry<bool> RequireBed = null!;
         internal static ConfigEntry<string> CreativeCommand = null!;
         internal static ConfigEntry<string> ReturnCommand = null!;
         internal static ConfigEntry<string> CreativeSlotId = null!;
@@ -35,12 +34,6 @@ namespace ValheimCreative.Configuration
                 "EnableCreativeCommands",
                 true,
                 "Enables chat commands for creative sessions.");
-
-            RequireBed = config.Bind(
-                "Creative",
-                "RequireBed",
-                true,
-                "Requires the player to be in a bed before !creative starts a session.");
 
             CreativeCommand = config.Bind(
                 "Creative",

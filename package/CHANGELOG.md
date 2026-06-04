@@ -1,3 +1,12 @@
+# 0.2.3
+
+- Removed the bed requirement from creative entry. Players now only need an empty main inventory and empty Shudnal ExtraSlots inventory for creative entry, return, and join commands.
+
+# 0.2.2
+
+- Fixed creative entry from bed leaving the player counted as sleeping, which could skip night for the server.
+- Fixed creative chat command handling so a command can only affect the sender's own character.
+
 # 0.2.1
 
 - Added `loadYOffset` support for per-blueprint vertical placement adjustment.

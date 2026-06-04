@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACKAGE_DIR="$ROOT/package"
 PLUGIN_DIR="$PACKAGE_DIR/BepInEx/plugins/valheimCreative"
 DIST_DIR="$ROOT/dist"
-VERSION="0.2.0"
+VERSION="0.2.3"
 
 dotnet build "$ROOT/valheimCreative.csproj" -c Release
 mkdir -p "$PLUGIN_DIR" "$DIST_DIR"

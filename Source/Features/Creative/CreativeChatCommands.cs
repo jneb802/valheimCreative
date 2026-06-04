@@ -51,6 +51,15 @@ namespace ValheimCreative.Features.Creative
                     return true;
                 }
 
+                if (!IsSenderCharacter(rpcData, playerZdo))
+                {
+                    ValheimCreativePlugin.ModLogger.LogWarning(
+                        $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: target ZDO is not owned by sender. " +
+                        CreativeSessionManager.DescribePlayerLookup(rpcData.m_targetZDO));
+                    SendPrivateLine(rpcData.m_senderPeerID, Vector3.zero, userInfo, "Creative command failed: player ownership mismatch.");
+                    return true;
+                }
+
                 Vector3 position = playerZdo.GetPosition() + Vector3.up * 1.8f;
                 IEnumerable<string> response;
                 if (CreativeInventoryGate.RequiresEmptyInventory(command))
@@ -226,6 +235,12 @@ namespace ValheimCreative.Features.Creative
             }
 
             return false;
+        }
+
+        private static bool IsSenderCharacter(ZRoutedRpc.RoutedRPCData rpcData, ZDO playerZdo)
+        {
+            long owner = playerZdo.GetOwner();
+            return owner == rpcData.m_senderPeerID;
         }
 
         internal static void SendPrivateLine(long targetPeerId, Vector3 position, UserInfo requester, string line)
