@@ -116,6 +116,9 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("awaitingRespawn")]
             public bool AwaitingRespawn { get; set; }
 
+            [JsonProperty("grantCreativeKeys")]
+            public bool GrantCreativeKeys { get; set; } = true;
+
             public CreativeSession ToSession()
             {
                 return new CreativeSession(
@@ -128,7 +131,8 @@ namespace ValheimCreative.Features.Creative
                     Quaternion.Euler(ParseVector(CreativeRotation)),
                     ParseBiome(CreativeBiome),
                     ParseVector(ReturnPosition),
-                    Quaternion.Euler(ParseVector(ReturnRotation)))
+                    Quaternion.Euler(ParseVector(ReturnRotation)),
+                    GrantCreativeKeys)
                 {
                     AwaitingRespawn = AwaitingRespawn
                 };
@@ -148,7 +152,8 @@ namespace ValheimCreative.Features.Creative
                     CreativeBiome = session.CreativeBiome.ToString(),
                     ReturnPosition = Format(session.ReturnPosition),
                     ReturnRotation = Format(session.ReturnRotation.eulerAngles),
-                    AwaitingRespawn = session.AwaitingRespawn
+                    AwaitingRespawn = session.AwaitingRespawn,
+                    GrantCreativeKeys = session.GrantCreativeKeys
                 };
             }
         }

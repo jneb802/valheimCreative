@@ -17,6 +17,7 @@ namespace ValheimCreative.Features.Creative
         internal bool AwaitingRespawn { get; set; }
         internal bool WasDead { get; set; }
         internal bool CreativeKeysSent { get; set; }
+        internal bool GrantCreativeKeys { get; set; }
 
         internal CreativeSession(
             long playerId,
@@ -28,7 +29,8 @@ namespace ValheimCreative.Features.Creative
             Quaternion creativeRotation,
             Heightmap.Biome creativeBiome,
             Vector3 returnPosition,
-            Quaternion returnRotation)
+            Quaternion returnRotation,
+            bool grantCreativeKeys = true)
         {
             PlayerId = playerId;
             PeerId = peerId;
@@ -40,6 +42,7 @@ namespace ValheimCreative.Features.Creative
             CreativeBiome = creativeBiome;
             ReturnPosition = returnPosition;
             ReturnRotation = returnRotation;
+            GrantCreativeKeys = grantCreativeKeys;
         }
     }
 }

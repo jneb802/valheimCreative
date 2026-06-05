@@ -22,8 +22,10 @@ namespace ValheimCreative
         {
             ModConfig.Bind(Config);
             CreativeInventoryGate.RegisterRoutedRpcHandler();
+            CreativeSiegePortalRpc.RegisterRoutedRpcHandler();
             CreativeConsoleCommands.Register();
             CreativeSessionManager.Load();
+            CreativeSiegeService.Load();
 
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
             ModLogger.LogInfo($"{ModName} {ModVersion} loaded.");
@@ -32,12 +34,14 @@ namespace ValheimCreative
         private void Update()
         {
             CreativeInventoryGate.Update();
+            CreativeSiegePortalRpc.RegisterRoutedRpcHandler();
             CreativeSessionManager.Update();
         }
 
         private void OnDestroy()
         {
             CreativeSessionManager.Save();
+            CreativeSiegeService.Save();
             _harmony.UnpatchSelf();
             Config.Save();
         }

@@ -27,6 +27,10 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> BlueprintDirectory = null!;
         internal static ConfigEntry<string> BlueprintMetadataFile = null!;
         internal static ConfigEntry<float> BlueprintSaveRadius = null!;
+        internal static ConfigEntry<string> SiegeDefinitionsFile = null!;
+        internal static ConfigEntry<string> SiegeStateFile = null!;
+        internal static ConfigEntry<string> SiegePosition = null!;
+        internal static ConfigEntry<float> SiegeZoneSpacing = null!;
         internal static ConfigEntry<bool> DebugLogging = null!;
 
         internal static void Bind(ConfigFile config)
@@ -157,6 +161,30 @@ namespace ValheimCreative.Configuration
                 128f,
                 "Maximum distance from the creative zone origin included by !creative save.");
 
+            SiegeDefinitionsFile = config.Bind(
+                "Sieges",
+                "SiegeDefinitionsFile",
+                "valheimCreative.sieges.json",
+                "JSON siege definition file path. Relative paths are resolved from BepInEx/config.");
+
+            SiegeStateFile = config.Bind(
+                "Sieges",
+                "SiegeStateFile",
+                "valheimCreative.siege-zones.json",
+                "JSON siege zone runtime state file path. Relative paths are resolved from BepInEx/config.");
+
+            SiegePosition = config.Bind(
+                "Sieges",
+                "SiegePosition",
+                "0,45,-16000",
+                "First siege zone origin position as x,y,z.");
+
+            SiegeZoneSpacing = config.Bind(
+                "Sieges",
+                "SiegeZoneSpacing",
+                256f,
+                "Distance between siege zone centers.");
+
             DebugLogging = config.Bind(
                 "Creative",
                 "DebugLogging",
@@ -167,6 +195,8 @@ namespace ValheimCreative.Configuration
         internal static Vector3 CreativePositionValue => ParseVector3(CreativePosition.Value, new Vector3(0f, 45f, -13000f));
 
         internal static Quaternion CreativeRotationValue => Quaternion.Euler(ParseVector3(CreativeRotation.Value, Vector3.zero));
+
+        internal static Vector3 SiegePositionValue => ParseVector3(SiegePosition.Value, new Vector3(0f, 45f, -16000f));
 
         private static Vector3 ParseVector3(string raw, Vector3 fallback)
         {

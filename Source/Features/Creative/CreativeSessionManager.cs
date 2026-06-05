@@ -458,7 +458,7 @@ namespace ValheimCreative.Features.Creative
                 if (session.AwaitingRespawn || session.WasDead)
                 {
                     TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out _);
-                    SendCreativeKeys(session);
+                    SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
                     TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
                     session.AwaitingRespawn = false;
@@ -468,7 +468,7 @@ namespace ValheimCreative.Features.Creative
                 }
                 else if (!session.CreativeKeysSent)
                 {
-                    SendCreativeKeys(session);
+                    SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
                 }
             }
@@ -489,7 +489,7 @@ namespace ValheimCreative.Features.Creative
                     session.PeerId = ResolvePeerId(playerZdo, session.PeerId);
                 }
 
-                SendCreativeKeys(session);
+                SendSessionKeys(session);
                 CreativeBiomeService.SendOverride(session);
             }
         }
@@ -499,6 +499,16 @@ namespace ValheimCreative.Features.Creative
             return ZDOMan.instance != null && !characterId.IsNone()
                 ? ZDOMan.instance.GetZDO(characterId)
                 : null;
+        }
+
+        internal static CreativeSession? GetSession(long playerId)
+        {
+            return SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session) ? session : null;
+        }
+
+        internal static void SetSession(CreativeSession session)
+        {
+            SessionsByPlayerId[session.PlayerId] = session;
         }
 
         internal static string DescribePlayerLookup(ZDOID characterId)
@@ -702,7 +712,7 @@ namespace ValheimCreative.Features.Creative
             return $"{ModConfig.CreativeSlotId.Value}_{slotIndex:000}";
         }
 
-        private static ZDO? FindPlayerZdo(long playerId)
+        internal static ZDO? FindPlayerZdo(long playerId)
         {
             if (ZNet.instance == null || ZDOMan.instance == null)
             {
@@ -726,7 +736,7 @@ namespace ValheimCreative.Features.Creative
             return null;
         }
 
-        private static ZDO? FindPlayerZdoByPlatformId(string platformId, out string matchedIdentifier)
+        internal static ZDO? FindPlayerZdoByPlatformId(string platformId, out string matchedIdentifier)
         {
             matchedIdentifier = string.Empty;
             if (ZNet.instance == null || ZDOMan.instance == null || string.IsNullOrWhiteSpace(platformId))
@@ -792,7 +802,7 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static bool IsServerReady()
+        internal static bool IsServerReady()
         {
             return ZNet.instance != null &&
                    ZNet.instance.IsServer() &&
@@ -805,24 +815,24 @@ namespace ValheimCreative.Features.Creative
             return playerZdo.GetBool(ZDOVars.s_dead);
         }
 
-        private static long ResolvePeerId(ZDO playerZdo, long fallback)
+        internal static long ResolvePeerId(ZDO playerZdo, long fallback)
         {
             long owner = playerZdo.GetOwner();
             return owner != 0L ? owner : fallback;
         }
 
-        private static long GetPlayerId(ZDO playerZdo)
+        internal static long GetPlayerId(ZDO playerZdo)
         {
             return playerZdo.GetLong(ZDOVars.s_playerID);
         }
 
-        private static string GetPlayerName(ZDO playerZdo, string fallback)
+        internal static string GetPlayerName(ZDO playerZdo, string fallback)
         {
             string name = playerZdo.GetString(ZDOVars.s_playerName, fallback);
             return string.IsNullOrWhiteSpace(name) ? fallback : name;
         }
 
-        private static void TeleportTo(ZDO playerZdo, Vector3 position, Quaternion rotation)
+        internal static void TeleportTo(ZDO playerZdo, Vector3 position, Quaternion rotation)
         {
             long owner = playerZdo.GetOwner();
             if (owner == 0L)
@@ -834,7 +844,7 @@ namespace ValheimCreative.Features.Creative
             ZRoutedRpc.instance.InvokeRoutedRPC(owner, playerZdo.m_uid, "RPC_TeleportTo", position, rotation, true);
         }
 
-        private static bool TryEnsureCreativeLocation(Vector3 position, string slotId, out string error)
+        internal static bool TryEnsureCreativeLocation(Vector3 position, string slotId, out string error)
         {
             error = string.Empty;
             if (!ModConfig.SpawnCreativeLocation.Value)
@@ -957,7 +967,7 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static int DestroyCreativeZoneZdos(Vector3 position)
+        internal static int DestroyCreativeZoneZdos(Vector3 position)
         {
             List<ZDO> objects = new();
             ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(position), 2, 0, objects);
@@ -1086,6 +1096,18 @@ namespace ValheimCreative.Features.Creative
             session.CreativeKeysSent = true;
         }
 
+        internal static void SendSessionKeys(CreativeSession session)
+        {
+            if (session.GrantCreativeKeys)
+            {
+                SendCreativeKeys(session);
+                return;
+            }
+
+            SendNormalKeys(session.PeerId);
+            session.CreativeKeysSent = true;
+        }
+
         private static void SendNormalKeys(long peerId)
         {
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, "GlobalKeys", ZoneSystem.instance.GetGlobalKeys());
@@ -1100,7 +1122,7 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static IEnumerable<string> Lines(string line)
+        internal static IEnumerable<string> Lines(string line)
         {
             return new[] { line };
         }
