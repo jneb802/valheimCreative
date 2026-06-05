@@ -1,3 +1,4 @@
+using System.Globalization;
 using HarmonyLib;
 
 namespace ValheimCreative.Features.Creative
@@ -6,8 +7,11 @@ namespace ValheimCreative.Features.Creative
     internal static class CreativeConsoleCommands
     {
         private const string LoadPlayerCommand = "creative_load_player";
+        private const string ZoneSizesCommand = "creative_zone_sizes";
+        private const string ZoneSizeCommand = "creative_zone_size";
         private const string SiegeListCommand = "creative_siege_list";
         private const string SiegeStatusCommand = "creative_siege_status";
+        private const string SiegeSizeCommand = "creative_siege_size";
         private const string SiegeLoadCommand = "creative_siege_load";
         private const string SiegeResetCommand = "creative_siege_reset";
         private const string SiegeEnterCommand = "creative_siege_enter";
@@ -20,7 +24,7 @@ namespace ValheimCreative.Features.Creative
 
         internal static void Register()
         {
-            if (_registered && Terminal.commands.ContainsKey(LoadPlayerCommand) && Terminal.commands.ContainsKey(SiegeEnterCommand))
+            if (_registered && Terminal.commands.ContainsKey(LoadPlayerCommand) && Terminal.commands.ContainsKey(SiegeEnterCommand) && Terminal.commands.ContainsKey(SiegeSizeCommand))
             {
                 return;
             }
@@ -56,6 +60,56 @@ namespace ValheimCreative.Features.Creative
                 });
 
             _ = new Terminal.ConsoleCommand(
+                ZoneSizesCommand,
+                "List allocated creative zone sizes. Usage: creative_zone_sizes",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    foreach (string line in CreativeSessionManager.ListCreativeZoneSizes())
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                ZoneSizeCommand,
+                "Show or set an allocated creative zone radius. Usage: creative_zone_size <ownerPlayerIdOrPlatformId> [radius]",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 2)
+                    {
+                        args.Context.AddString("Usage: creative_zone_size <ownerPlayerIdOrPlatformId> [radius]");
+                        return;
+                    }
+
+                    if (!args.TryParameterLong(1, out long playerId) || playerId == 0L)
+                    {
+                        args.Context.AddString("ownerPlayerIdOrPlatformId must be a non-zero number.");
+                        return;
+                    }
+
+                    if (!TryOptionalRadius(args, 2, out float? radius))
+                    {
+                        args.Context.AddString("radius must be a positive number.");
+                        return;
+                    }
+
+                    foreach (string line in CreativeSessionManager.GetOrSetCreativeZoneRadius(playerId, radius))
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
                 SiegeListCommand,
                 "List configured creative siege zones. Usage: creative_siege_list",
                 args =>
@@ -78,6 +132,34 @@ namespace ValheimCreative.Features.Creative
                     }
 
                     foreach (string line in CreativeSiegeService.GetStatus(args[1].Trim()))
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                SiegeSizeCommand,
+                "Show or set a creative siege zone radius. Usage: creative_siege_size <siegeId> [radius]",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 2)
+                    {
+                        args.Context.AddString("Usage: creative_siege_size <siegeId> [radius]");
+                        return;
+                    }
+
+                    if (!TryOptionalRadius(args, 2, out float? radius))
+                    {
+                        args.Context.AddString("radius must be a positive number.");
+                        return;
+                    }
+
+                    foreach (string line in CreativeSiegeService.GetOrSetSiegeRadius(args[1].Trim(), radius))
                     {
                         args.Context.AddString(line);
                     }
@@ -140,6 +222,34 @@ namespace ValheimCreative.Features.Creative
                     }
                 });
             _registered = true;
+        }
+
+        private static bool RequireServer(Terminal.ConsoleEventArgs args)
+        {
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+            {
+                return true;
+            }
+
+            args.Context.AddString("This command must be run on the server.");
+            return false;
+        }
+
+        private static bool TryOptionalRadius(Terminal.ConsoleEventArgs args, int index, out float? radius)
+        {
+            radius = null;
+            if (args.Length <= index)
+            {
+                return true;
+            }
+
+            if (!float.TryParse(args[index], NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed) || parsed <= 0f)
+            {
+                return false;
+            }
+
+            radius = parsed;
+            return true;
         }
     }
 }

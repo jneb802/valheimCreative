@@ -37,6 +37,11 @@ namespace ValheimCreative.Features.Creative
                 if (!string.IsNullOrWhiteSpace(zone.Id))
                 {
                     zone.Id = NormalizeId(zone.Id);
+                    if (DefinitionsById.TryGetValue(zone.Id, out SiegeDefinition definition) && zone.Radius <= 0f)
+                    {
+                        zone.Radius = definition.RadiusOrDefault;
+                    }
+
                     ZonesById[zone.Id] = zone;
                 }
             }
@@ -63,7 +68,13 @@ namespace ValheimCreative.Features.Creative
 
             return DefinitionsById.Values
                 .OrderBy(definition => definition.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(definition => $"{definition.Id}: {definition.DisplayNameOrId}, blueprint={definition.Blueprint}, biome={definition.BiomeOrDefault}");
+                .Select(definition =>
+                {
+                    float radius = ZonesById.TryGetValue(definition.Id, out SiegeZoneState zone)
+                        ? zone.RadiusValue
+                        : definition.RadiusOrDefault;
+                    return $"{definition.Id}: {definition.DisplayNameOrId}, blueprint={definition.Blueprint}, biome={definition.BiomeOrDefault}, radius={CreativeSessionManager.FormatRadius(radius)}m";
+                });
         }
 
         internal static IEnumerable<string> GetStatus(string siegeId)
@@ -75,7 +86,28 @@ namespace ValheimCreative.Features.Creative
 
             SiegeZoneState zone = GetOrCreateZone(definition);
             return CreativeSessionManager.Lines(
-                $"{definition.Id}: loaded={zone.Loaded}, position={Format(zone.PositionValue)}, blueprint={definition.Blueprint}, biome={definition.BiomeOrDefault}");
+                $"{definition.Id}: loaded={zone.Loaded}, position={Format(zone.PositionValue)}, radius={CreativeSessionManager.FormatRadius(zone.RadiusValue)}m, blueprint={definition.Blueprint}, biome={definition.BiomeOrDefault}");
+        }
+
+        internal static IEnumerable<string> GetOrSetSiegeRadius(string siegeId, float? radius)
+        {
+            if (!TryGetDefinition(siegeId, out SiegeDefinition definition, out string error))
+            {
+                return CreativeSessionManager.Lines(error);
+            }
+
+            SiegeZoneState zone = GetOrCreateZone(definition);
+            if (!radius.HasValue)
+            {
+                return CreativeSessionManager.Lines($"Siege {definition.Id} radius={CreativeSessionManager.FormatRadius(zone.RadiusValue)}m.");
+            }
+
+            zone.Radius = Mathf.Max(1f, radius.Value);
+            CreativeSessionManager.ApplyRadiusToActiveSlot(zone.SlotId, zone.RadiusValue);
+            CreativeSessionManager.Save();
+            Save();
+            ValheimCreativePlugin.ModLogger.LogInfo($"Set siege {definition.Id} radius to {CreativeSessionManager.FormatRadius(zone.RadiusValue)}m.");
+            return CreativeSessionManager.Lines($"Siege {definition.Id} radius set to {CreativeSessionManager.FormatRadius(zone.RadiusValue)}m.");
         }
 
         internal static IEnumerable<string> LoadSiege(string siegeId)
@@ -156,6 +188,7 @@ namespace ValheimCreative.Features.Creative
                 zone.PositionValue,
                 ModConfig.CreativeRotationValue,
                 biome,
+                zone.RadiusValue,
                 returnPosition,
                 returnRotation,
                 definition.GrantCreativeKeys);
@@ -213,6 +246,7 @@ namespace ValheimCreative.Features.Creative
                 zone.PositionValue,
                 ModConfig.CreativeRotationValue,
                 biome,
+                zone.RadiusValue,
                 Vector3.zero,
                 Quaternion.identity,
                 definition.GrantCreativeKeys);
@@ -249,7 +283,7 @@ namespace ValheimCreative.Features.Creative
             }
 
             int removed = ZDOMan.instance != null
-                ? CreativeSessionManager.DestroyCreativeZoneZdos(zone.PositionValue)
+                ? CreativeSessionManager.DestroyCreativeZoneZdos(zone.PositionValue, zone.RadiusValue)
                 : 0;
 
             if (!CreativeSessionManager.TryEnsureCreativeLocation(zone.PositionValue, zone.SlotId, out string error))
@@ -273,6 +307,7 @@ namespace ValheimCreative.Features.Creative
                 Id = definition.Id,
                 SlotId = $"siege_{definition.Id}",
                 Position = Format(position),
+                Radius = definition.RadiusOrDefault,
                 Loaded = false,
                 LoadedAt = string.Empty
             };
@@ -415,6 +450,9 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("position")]
             public string Position { get; set; } = string.Empty;
 
+            [JsonProperty("radius")]
+            public float Radius { get; set; }
+
             [JsonProperty("resetBeforeLoad")]
             public bool ResetBeforeLoad { get; set; } = true;
 
@@ -426,6 +464,9 @@ namespace ValheimCreative.Features.Creative
 
             [JsonIgnore]
             public string BiomeOrDefault => string.IsNullOrWhiteSpace(Biome) ? CreativeBiomeService.DefaultBiome.ToString() : Biome;
+
+            [JsonIgnore]
+            public float RadiusOrDefault => Radius > 0f ? Radius : ModConfig.DefaultSiegeZoneRadiusValue;
         }
 
         private sealed class SiegeZoneState
@@ -439,6 +480,9 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("position")]
             public string Position { get; set; } = "0,0,0";
 
+            [JsonProperty("radius")]
+            public float Radius { get; set; }
+
             [JsonProperty("loaded")]
             public bool Loaded { get; set; }
 
@@ -447,6 +491,9 @@ namespace ValheimCreative.Features.Creative
 
             [JsonIgnore]
             public Vector3 PositionValue => TryParseVector(Position, out Vector3 value) ? value : Vector3.zero;
+
+            [JsonIgnore]
+            public float RadiusValue => Radius > 0f ? Radius : ModConfig.DefaultSiegeZoneRadiusValue;
         }
     }
 }

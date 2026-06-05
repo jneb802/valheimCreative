@@ -12,6 +12,7 @@ namespace ValheimCreative.Features.Creative
         internal Vector3 CreativePosition { get; }
         internal Quaternion CreativeRotation { get; }
         internal Heightmap.Biome CreativeBiome { get; set; }
+        internal float ZoneRadius { get; set; }
         internal Vector3 ReturnPosition { get; }
         internal Quaternion ReturnRotation { get; }
         internal bool AwaitingRespawn { get; set; }
@@ -28,6 +29,7 @@ namespace ValheimCreative.Features.Creative
             Vector3 creativePosition,
             Quaternion creativeRotation,
             Heightmap.Biome creativeBiome,
+            float zoneRadius,
             Vector3 returnPosition,
             Quaternion returnRotation,
             bool grantCreativeKeys = true)
@@ -40,6 +42,7 @@ namespace ValheimCreative.Features.Creative
             CreativePosition = creativePosition;
             CreativeRotation = creativeRotation;
             CreativeBiome = creativeBiome;
+            ZoneRadius = Mathf.Max(1f, zoneRadius);
             ReturnPosition = returnPosition;
             ReturnRotation = returnRotation;
             GrantCreativeKeys = grantCreativeKeys;

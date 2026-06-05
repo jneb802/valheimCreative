@@ -21,16 +21,16 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> InventoryCheckTimeoutSeconds = null!;
         internal static ConfigEntry<float> DeathRecoveryCheckSeconds = null!;
         internal static ConfigEntry<string> DefaultCreativeBiome = null!;
-        internal static ConfigEntry<float> CreativeBiomeOverrideRadius = null!;
+        internal static ConfigEntry<float> DefaultCreativeZoneRadius = null!;
         internal static ConfigEntry<string> SessionFile = null!;
         internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<string> BlueprintDirectory = null!;
         internal static ConfigEntry<string> BlueprintMetadataFile = null!;
-        internal static ConfigEntry<float> BlueprintSaveRadius = null!;
         internal static ConfigEntry<string> SiegeDefinitionsFile = null!;
         internal static ConfigEntry<string> SiegeStateFile = null!;
         internal static ConfigEntry<string> SiegePosition = null!;
         internal static ConfigEntry<float> SiegeZoneSpacing = null!;
+        internal static ConfigEntry<float> DefaultSiegeZoneRadius = null!;
         internal static ConfigEntry<bool> DebugLogging = null!;
 
         internal static void Bind(ConfigFile config)
@@ -125,11 +125,11 @@ namespace ValheimCreative.Configuration
                 "Meadows",
                 "Default biome mask applied to new creative zones.");
 
-            CreativeBiomeOverrideRadius = config.Bind(
+            DefaultCreativeZoneRadius = config.Bind(
                 "Creative",
-                "CreativeBiomeOverrideRadius",
-                512f,
-                "Radius around each creative zone center where client-side terrain biome paint is overridden.");
+                "DefaultCreativeZoneRadius",
+                128f,
+                "Default creative zone footprint radius in meters. Used for biome paint, reset cleanup, and blueprint save range.");
 
             SessionFile = config.Bind(
                 "Creative",
@@ -155,12 +155,6 @@ namespace ValheimCreative.Configuration
                 "blueprint-metadata.json",
                 "JSON file in the blueprint directory that maps blueprint filenames to loadYOffset and biome values.");
 
-            BlueprintSaveRadius = config.Bind(
-                "Blueprints",
-                "BlueprintSaveRadius",
-                128f,
-                "Maximum distance from the creative zone origin included by !creative save.");
-
             SiegeDefinitionsFile = config.Bind(
                 "Sieges",
                 "SiegeDefinitionsFile",
@@ -185,6 +179,12 @@ namespace ValheimCreative.Configuration
                 256f,
                 "Distance between siege zone centers.");
 
+            DefaultSiegeZoneRadius = config.Bind(
+                "Sieges",
+                "DefaultSiegeZoneRadius",
+                128f,
+                "Default siege zone footprint radius in meters. Used for biome paint and reset cleanup.");
+
             DebugLogging = config.Bind(
                 "Creative",
                 "DebugLogging",
@@ -197,6 +197,10 @@ namespace ValheimCreative.Configuration
         internal static Quaternion CreativeRotationValue => Quaternion.Euler(ParseVector3(CreativeRotation.Value, Vector3.zero));
 
         internal static Vector3 SiegePositionValue => ParseVector3(SiegePosition.Value, new Vector3(0f, 45f, -16000f));
+
+        internal static float DefaultCreativeZoneRadiusValue => Mathf.Max(1f, DefaultCreativeZoneRadius.Value);
+
+        internal static float DefaultSiegeZoneRadiusValue => Mathf.Max(1f, DefaultSiegeZoneRadius.Value);
 
         private static Vector3 ParseVector3(string raw, Vector3 fallback)
         {
