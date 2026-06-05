@@ -10,6 +10,7 @@ namespace ValheimCreative.Features.Creative
         Join,
         Tools,
         Reset,
+        Biome,
         Load,
         Save
     }

@@ -34,25 +34,30 @@ Install `valheimCreative.dll` on the dedicated server.
 !creative status
 !creative invite
 !creative join CODE
+!creative biome
+!creative biome Plains
 ```
 
-## Blueprint load offsets
+## Blueprint Metadata
 
 Loaded blueprints are anchored by their bottom-center bounds. To adjust one
-blueprint after that anchor is calculated, create
-`blueprint-load-offsets.json` in the configured blueprint directory:
+blueprint after that anchor is calculated, or to set the biome applied when it
+loads, create `blueprint-metadata.json` in the configured blueprint directory:
 
 ```json
 {
   "blueprints": {
     "the_midnight_tavern.blueprint": {
-      "loadYOffset": -1.0
+      "loadYOffset": -1.0,
+      "biome": "Plains"
     }
   }
 }
 ```
 
 Negative `loadYOffset` values lower the loaded build. Positive values raise it.
+Supported biome values include `Meadows`, `BlackForest`, `Swamp`, `Mountain`,
+`Plains`, `Mistlands`, `AshLands`, `DeepNorth`, and `Ocean`.
 
 ## Expand World files
 

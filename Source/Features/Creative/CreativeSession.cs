@@ -11,6 +11,7 @@ namespace ValheimCreative.Features.Creative
         internal string SlotId { get; }
         internal Vector3 CreativePosition { get; }
         internal Quaternion CreativeRotation { get; }
+        internal Heightmap.Biome CreativeBiome { get; set; }
         internal Vector3 ReturnPosition { get; }
         internal Quaternion ReturnRotation { get; }
         internal bool AwaitingRespawn { get; set; }
@@ -25,6 +26,7 @@ namespace ValheimCreative.Features.Creative
             string slotId,
             Vector3 creativePosition,
             Quaternion creativeRotation,
+            Heightmap.Biome creativeBiome,
             Vector3 returnPosition,
             Quaternion returnRotation)
         {
@@ -35,6 +37,7 @@ namespace ValheimCreative.Features.Creative
             SlotId = slotId;
             CreativePosition = creativePosition;
             CreativeRotation = creativeRotation;
+            CreativeBiome = creativeBiome;
             ReturnPosition = returnPosition;
             ReturnRotation = returnRotation;
         }

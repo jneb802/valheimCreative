@@ -20,10 +20,12 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<bool> RequireEmptyInventory = null!;
         internal static ConfigEntry<float> InventoryCheckTimeoutSeconds = null!;
         internal static ConfigEntry<float> DeathRecoveryCheckSeconds = null!;
+        internal static ConfigEntry<string> DefaultCreativeBiome = null!;
+        internal static ConfigEntry<float> CreativeBiomeOverrideRadius = null!;
         internal static ConfigEntry<string> SessionFile = null!;
         internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<string> BlueprintDirectory = null!;
-        internal static ConfigEntry<string> BlueprintLoadOffsetsFile = null!;
+        internal static ConfigEntry<string> BlueprintMetadataFile = null!;
         internal static ConfigEntry<float> BlueprintSaveRadius = null!;
         internal static ConfigEntry<bool> DebugLogging = null!;
 
@@ -113,6 +115,18 @@ namespace ValheimCreative.Configuration
                 1.0f,
                 "How often active creative sessions are checked for death and respawn recovery.");
 
+            DefaultCreativeBiome = config.Bind(
+                "Creative",
+                "DefaultCreativeBiome",
+                "Plains",
+                "Default biome mask applied to new creative zones.");
+
+            CreativeBiomeOverrideRadius = config.Bind(
+                "Creative",
+                "CreativeBiomeOverrideRadius",
+                512f,
+                "Radius around each creative zone center where client-side terrain biome paint is overridden.");
+
             SessionFile = config.Bind(
                 "Creative",
                 "SessionFile",
@@ -131,11 +145,11 @@ namespace ValheimCreative.Configuration
                 "expand_world/blueprints",
                 "Blueprint directory. Relative paths are resolved from BepInEx/config.");
 
-            BlueprintLoadOffsetsFile = config.Bind(
+            BlueprintMetadataFile = config.Bind(
                 "Blueprints",
-                "BlueprintLoadOffsetsFile",
-                "blueprint-load-offsets.json",
-                "JSON file in the blueprint directory that maps deployed blueprint filenames to loadYOffset values.");
+                "BlueprintMetadataFile",
+                "blueprint-metadata.json",
+                "JSON file in the blueprint directory that maps blueprint filenames to loadYOffset and biome values.");
 
             BlueprintSaveRadius = config.Bind(
                 "Blueprints",

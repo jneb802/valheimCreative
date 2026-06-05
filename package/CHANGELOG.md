@@ -1,3 +1,8 @@
+# 0.2.4
+
+- Added `!creative biome` and `!creative biome <biome>` for creative zone biome paint selection.
+- Replaced `blueprint-load-offsets.json` with `blueprint-metadata.json`, storing `loadYOffset` and optional biome per blueprint.
+
 # 0.2.3
 
 - Removed the bed requirement from creative entry. Players now only need an empty main inventory and empty Shudnal ExtraSlots inventory for creative entry, return, and join commands.
