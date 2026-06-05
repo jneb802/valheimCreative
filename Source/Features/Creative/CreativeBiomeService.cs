@@ -12,7 +12,7 @@ namespace ValheimCreative.Features.Creative
         internal static Heightmap.Biome DefaultBiome =>
             TryParseBiome(ModConfig.DefaultCreativeBiome.Value, out Heightmap.Biome biome)
                 ? biome
-                : Heightmap.Biome.Plains;
+                : Heightmap.Biome.Meadows;
 
         internal static bool TryParseBiome(string raw, out Heightmap.Biome biome)
         {

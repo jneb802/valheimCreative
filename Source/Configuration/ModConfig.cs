@@ -118,7 +118,7 @@ namespace ValheimCreative.Configuration
             DefaultCreativeBiome = config.Bind(
                 "Creative",
                 "DefaultCreativeBiome",
-                "Plains",
+                "Meadows",
                 "Default biome mask applied to new creative zones.");
 
             CreativeBiomeOverrideRadius = config.Bind(

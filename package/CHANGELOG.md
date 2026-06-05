@@ -2,6 +2,7 @@
 
 - Added `!creative biome` and `!creative biome <biome>` for creative zone biome paint selection.
 - Replaced `blueprint-load-offsets.json` with `blueprint-metadata.json`, storing `loadYOffset` and optional biome per blueprint.
+- Set the default creative zone biome to Meadows when no biome is stored yet.
 
 # 0.2.3
 
