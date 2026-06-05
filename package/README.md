@@ -15,8 +15,11 @@ Invite commands:
 ```text
 !creative invite
 !creative join CODE
+!creative biome
+!creative biome Plains
 ```
 
-Blueprint loads can be height-adjusted with `blueprint-load-offsets.json` in
-the configured blueprint directory. Use deployed filenames as keys and
-`loadYOffset` values in meters. Negative values lower the loaded build.
+Blueprint loads use `blueprint-metadata.json` in the configured blueprint
+directory. Use deployed filenames as keys with `loadYOffset` values in meters
+and optional `biome` values. Negative `loadYOffset` values lower the loaded
+build.

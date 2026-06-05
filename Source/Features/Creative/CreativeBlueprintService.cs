@@ -42,10 +42,12 @@ namespace ValheimCreative.Features.Creative
             long creatorId,
             out int spawned,
             out List<string> missingPrefabs,
+            out Heightmap.Biome? metadataBiome,
             out string error)
         {
             spawned = 0;
             missingPrefabs = new List<string>();
+            metadataBiome = null;
             error = "";
 
             if (!IsRuntimeReady())
@@ -86,7 +88,9 @@ namespace ValheimCreative.Features.Creative
             Quaternion zoneRotation = session.CreativeRotation;
             Vector3 origin = session.CreativePosition;
             Vector3 loadAnchor = GetLoadAnchor(blueprint);
-            float loadYOffset = GetLoadYOffset(safeName);
+            BlueprintMetadata metadata = GetMetadata(safeName);
+            metadataBiome = metadata.Biome;
+            float loadYOffset = metadata.LoadYOffset;
             Vector3 loadOffset = new Vector3(0f, loadYOffset, 0f);
             HashSet<string> missing = new(StringComparer.Ordinal);
             foreach (BlueprintPieceEntry piece in blueprint.Pieces)
@@ -159,52 +163,68 @@ namespace ValheimCreative.Features.Creative
             return new Vector3((min.x + max.x) * 0.5f, min.y, (min.z + max.z) * 0.5f);
         }
 
-        private static float GetLoadYOffset(string blueprintFileName)
+        private static BlueprintMetadata GetMetadata(string blueprintFileName)
         {
-            string path = GetBlueprintLoadOffsetsPath();
+            string path = GetBlueprintMetadataPath();
             if (!File.Exists(path))
             {
-                return 0f;
+                return BlueprintMetadata.Empty;
             }
 
             try
             {
                 JObject root = JObject.Parse(File.ReadAllText(path));
-                JToken? entry = FindLoadOffsetEntry(root, blueprintFileName);
+                JToken? entry = FindMetadataEntry(root, blueprintFileName);
                 if (entry == null)
                 {
-                    return 0f;
+                    return BlueprintMetadata.Empty;
                 }
 
+                float loadYOffset = 0f;
+                Heightmap.Biome? biome = null;
                 if (entry.Type == JTokenType.Object)
                 {
-                    entry = entry["loadYOffset"];
+                    JToken? offsetToken = entry["loadYOffset"];
+                    if (offsetToken != null && TryParseLoadYOffset(offsetToken, out float offset))
+                    {
+                        loadYOffset = offset;
+                    }
+
+                    JToken? biomeToken = entry["biome"];
+                    if (biomeToken != null && CreativeBiomeService.TryParseBiome(biomeToken.ToString(), out Heightmap.Biome parsedBiome))
+                    {
+                        biome = parsedBiome;
+                    }
+
+                    return new BlueprintMetadata(loadYOffset, biome);
                 }
 
-                return entry != null && TryParseLoadYOffset(entry, out float offset) ? offset : 0f;
+                return TryParseLoadYOffset(entry, out float legacyOffset)
+                    ? new BlueprintMetadata(legacyOffset, null)
+                    : BlueprintMetadata.Empty;
             }
             catch (Exception ex)
             {
                 if (ModConfig.DebugLogging.Value)
                 {
-                    ValheimCreativePlugin.ModLogger.LogWarning($"Could not read blueprint load offsets from {path}: {ex.Message}");
+                    ValheimCreativePlugin.ModLogger.LogWarning($"Could not read blueprint metadata from {path}: {ex.Message}");
                 }
-                return 0f;
+                return BlueprintMetadata.Empty;
             }
         }
 
-        private static string GetBlueprintLoadOffsetsPath()
+        private static string GetBlueprintMetadataPath()
         {
-            string fileName = Path.GetFileName(ModConfig.BlueprintLoadOffsetsFile.Value.Trim());
+            string fileName = Path.GetFileName(ModConfig.BlueprintMetadataFile.Value.Trim());
             if (string.IsNullOrWhiteSpace(fileName))
             {
-                fileName = "blueprint-load-offsets.json";
+                fileName = "blueprint-metadata.json";
             }
 
             return Path.Combine(GetBlueprintDirectory(), fileName);
         }
 
-        private static JToken? FindLoadOffsetEntry(JObject root, string blueprintFileName)
+        private static JToken? FindMetadataEntry(JObject root, string blueprintFileName)
         {
             JObject? entries = root["blueprints"] as JObject ?? root;
             string normalizedFileName = blueprintFileName.Trim().ToLowerInvariant();
@@ -238,6 +258,7 @@ namespace ValheimCreative.Features.Creative
             CreativeSession session,
             long creatorId,
             string creatorName,
+            Heightmap.Biome biome,
             out int saved,
             out string error)
         {
@@ -278,8 +299,45 @@ namespace ValheimCreative.Features.Creative
             };
             blueprint.Pieces.AddRange(pieces);
             Write(path, blueprint);
+            string safeName = Path.GetFileName(path);
+            BlueprintMetadata currentMetadata = GetMetadata(safeName);
+            WriteMetadata(safeName, new BlueprintMetadata(currentMetadata.LoadYOffset, biome));
             saved = pieces.Count;
             return true;
+        }
+
+        private static void WriteMetadata(string blueprintFileName, BlueprintMetadata metadata)
+        {
+            string path = GetBlueprintMetadataPath();
+            JObject root = ReadMetadataRoot(path);
+            JObject blueprints = root["blueprints"] as JObject ?? new JObject();
+            root["blueprints"] = blueprints;
+            blueprints[blueprintFileName] = new JObject
+            {
+                ["loadYOffset"] = metadata.LoadYOffset,
+                ["biome"] = metadata.Biome?.ToString() ?? CreativeBiomeService.DefaultBiome.ToString()
+            };
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, root.ToString());
+        }
+
+        private static JObject ReadMetadataRoot(string path)
+        {
+            if (!File.Exists(path))
+            {
+                return new JObject();
+            }
+
+            try
+            {
+                return JObject.Parse(File.ReadAllText(path));
+            }
+            catch (Exception ex)
+            {
+                ValheimCreativePlugin.ModLogger.LogWarning($"Could not read blueprint metadata from {path}; replacing it. {ex.Message}");
+                return new JObject();
+            }
         }
 
         private static List<BlueprintPieceEntry> CollectPieces(CreativeSession session, long creatorId)
@@ -540,6 +598,20 @@ namespace ValheimCreative.Features.Creative
                    ZNetScene.instance != null &&
                    ZDOMan.instance != null &&
                    ZoneSystem.instance != null;
+        }
+
+        private readonly struct BlueprintMetadata
+        {
+            internal static readonly BlueprintMetadata Empty = new(0f, null);
+
+            internal BlueprintMetadata(float loadYOffset, Heightmap.Biome? biome)
+            {
+                LoadYOffset = loadYOffset;
+                Biome = biome;
+            }
+
+            internal float LoadYOffset { get; }
+            internal Heightmap.Biome? Biome { get; }
         }
     }
 }

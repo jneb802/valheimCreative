@@ -104,6 +104,9 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("creativeRotation")]
             public string CreativeRotation { get; set; } = "0,0,0";
 
+            [JsonProperty("creativeBiome")]
+            public string CreativeBiome { get; set; } = string.Empty;
+
             [JsonProperty("returnPosition")]
             public string ReturnPosition { get; set; } = "0,0,0";
 
@@ -123,6 +126,7 @@ namespace ValheimCreative.Features.Creative
                     SlotId,
                     ParseVector(CreativePosition),
                     Quaternion.Euler(ParseVector(CreativeRotation)),
+                    ParseBiome(CreativeBiome),
                     ParseVector(ReturnPosition),
                     Quaternion.Euler(ParseVector(ReturnRotation)))
                 {
@@ -141,6 +145,7 @@ namespace ValheimCreative.Features.Creative
                     SlotId = session.SlotId,
                     CreativePosition = Format(session.CreativePosition),
                     CreativeRotation = Format(session.CreativeRotation.eulerAngles),
+                    CreativeBiome = session.CreativeBiome.ToString(),
                     ReturnPosition = Format(session.ReturnPosition),
                     ReturnRotation = Format(session.ReturnRotation.eulerAngles),
                     AwaitingRespawn = session.AwaitingRespawn
@@ -165,9 +170,12 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("position")]
             public string Position { get; set; } = "0,0,0";
 
+            [JsonProperty("biome")]
+            public string Biome { get; set; } = string.Empty;
+
             public CreativeZone ToZone()
             {
-                return new CreativeZone(OwnerPlayerId, OwnerPlayerName, SlotIndex, SlotId, ParseVector(Position));
+                return new CreativeZone(OwnerPlayerId, OwnerPlayerName, SlotIndex, SlotId, ParseVector(Position), ParseBiome(Biome));
             }
 
             public static ZoneRecord FromZone(CreativeZone zone)
@@ -178,7 +186,8 @@ namespace ValheimCreative.Features.Creative
                     OwnerPlayerName = zone.OwnerPlayerName,
                     SlotIndex = zone.SlotIndex,
                     SlotId = zone.SlotId,
-                    Position = Format(zone.Position)
+                    Position = Format(zone.Position),
+                    Biome = zone.Biome.ToString()
                 };
             }
         }
@@ -204,6 +213,13 @@ namespace ValheimCreative.Features.Creative
             }
 
             return new Vector3(x, y, z);
+        }
+
+        private static Heightmap.Biome ParseBiome(string raw)
+        {
+            return CreativeBiomeService.TryParseBiome(raw, out Heightmap.Biome biome)
+                ? biome
+                : CreativeBiomeService.DefaultBiome;
         }
     }
 }

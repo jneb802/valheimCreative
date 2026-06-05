@@ -31,7 +31,7 @@ namespace ValheimCreative.Features.Creative
                 userInfo.Deserialize(ref rpcData.m_parameters);
                 string text = rpcData.m_parameters.ReadString();
 
-                if (!TryParseCommand(text, out CreativeCommand command, out string inviteCode))
+                if (!TryParseCommand(text, out CreativeCommand command, out string commandArgument))
                 {
                     return false;
                 }
@@ -71,14 +71,14 @@ namespace ValheimCreative.Features.Creative
                             rpcData.m_senderPeerID,
                             playerZdo,
                             userInfo.Name,
-                            inviteCode,
+                            commandArgument,
                             userInfo,
                             position)
                     };
                 }
                 else
                 {
-                    response = ExecuteCommand(rpcData.m_senderPeerID, playerZdo, userInfo.Name, command, inviteCode);
+                    response = ExecuteCommand(rpcData.m_senderPeerID, playerZdo, userInfo.Name, command, commandArgument);
                 }
 
                 foreach (string line in response)
@@ -131,7 +131,7 @@ namespace ValheimCreative.Features.Creative
             ZDO playerZdo,
             string fallbackName,
             CreativeCommand command,
-            string inviteCode)
+            string commandArgument)
         {
             return command switch
             {
@@ -139,19 +139,20 @@ namespace ValheimCreative.Features.Creative
                 CreativeCommand.Return => CreativeSessionManager.ReturnFromCreative(peerId, playerZdo),
                 CreativeCommand.Status => CreativeSessionManager.GetStatus(playerZdo),
                 CreativeCommand.Invite => CreativeSessionManager.GetInvite(playerZdo),
-                CreativeCommand.Join => CreativeSessionManager.JoinCreative(peerId, playerZdo, inviteCode, fallbackName),
+                CreativeCommand.Join => CreativeSessionManager.JoinCreative(peerId, playerZdo, commandArgument, fallbackName),
                 CreativeCommand.Tools => CreativeSessionManager.SpawnTools(playerZdo),
                 CreativeCommand.Reset => CreativeSessionManager.ResetCreativeZone(playerZdo),
-                CreativeCommand.Load => CreativeSessionManager.LoadBlueprint(playerZdo, inviteCode),
-                CreativeCommand.Save => CreativeSessionManager.SaveBlueprint(playerZdo, inviteCode),
+                CreativeCommand.Biome => CreativeSessionManager.SetCreativeBiome(playerZdo, commandArgument),
+                CreativeCommand.Load => CreativeSessionManager.LoadBlueprint(playerZdo, commandArgument),
+                CreativeCommand.Save => CreativeSessionManager.SaveBlueprint(playerZdo, commandArgument),
                 _ => Array.Empty<string>()
             };
         }
 
-        private static bool TryParseCommand(string text, out CreativeCommand command, out string inviteCode)
+        private static bool TryParseCommand(string text, out CreativeCommand command, out string commandArgument)
         {
             command = CreativeCommand.None;
-            inviteCode = string.Empty;
+            commandArgument = string.Empty;
             string trimmed = text.Trim();
             string creative = ModConfig.CreativeCommand.Value.Trim();
             string ret = ModConfig.ReturnCommand.Value.Trim();
@@ -192,11 +193,31 @@ namespace ValheimCreative.Features.Creative
                 return true;
             }
 
+            if (trimmed.Equals(creative + " biome", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Biome;
+                return true;
+            }
+
+            string biomePrefix = creative + " biome ";
+            if (trimmed.StartsWith(biomePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                commandArgument = trimmed.Substring(biomePrefix.Length).Trim();
+                if (commandArgument.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Biome;
+                return true;
+            }
+
             string loadPrefix = creative + " load ";
             if (trimmed.StartsWith(loadPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                inviteCode = trimmed.Substring(loadPrefix.Length).Trim();
-                if (inviteCode.Length == 0)
+                commandArgument = trimmed.Substring(loadPrefix.Length).Trim();
+                if (commandArgument.Length == 0)
                 {
                     command = CreativeCommand.None;
                     return false;
@@ -209,8 +230,8 @@ namespace ValheimCreative.Features.Creative
             string savePrefix = creative + " save ";
             if (trimmed.StartsWith(savePrefix, StringComparison.OrdinalIgnoreCase))
             {
-                inviteCode = trimmed.Substring(savePrefix.Length).Trim();
-                if (inviteCode.Length == 0)
+                commandArgument = trimmed.Substring(savePrefix.Length).Trim();
+                if (commandArgument.Length == 0)
                 {
                     command = CreativeCommand.None;
                     return false;
@@ -223,8 +244,8 @@ namespace ValheimCreative.Features.Creative
             string joinPrefix = creative + " join ";
             if (trimmed.StartsWith(joinPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                inviteCode = trimmed.Substring(joinPrefix.Length).Trim();
-                if (inviteCode.Length == 0)
+                commandArgument = trimmed.Substring(joinPrefix.Length).Trim();
+                if (commandArgument.Length == 0)
                 {
                     command = CreativeCommand.None;
                     return false;

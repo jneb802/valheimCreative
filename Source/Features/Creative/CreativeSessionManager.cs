@@ -57,6 +57,7 @@ namespace ValheimCreative.Features.Creative
 
                 existing.PeerId = ResolvePeerId(playerZdo, peerId);
                 SendCreativeKeys(existing);
+                CreativeBiomeService.SendOverride(existing);
                 TeleportTo(playerZdo, existing.CreativePosition, existing.CreativeRotation);
                 Save();
                 return Lines("Creative session restored.");
@@ -77,11 +78,13 @@ namespace ValheimCreative.Features.Creative
                 zone.SlotId,
                 zone.Position,
                 ModConfig.CreativeRotationValue,
+                zone.Biome,
                 playerZdo.GetPosition(),
                 playerZdo.GetRotation());
 
             SessionsByPlayerId[playerId] = session;
             SendCreativeKeys(session);
+            CreativeBiomeService.SendOverride(session);
             TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             Save();
             LogDebug($"Started creative session for {session.PlayerName} ({session.PlayerId}).");
@@ -104,6 +107,7 @@ namespace ValheimCreative.Features.Creative
 
             session.PeerId = ResolvePeerId(playerZdo, peerId);
             SendNormalKeys(session.PeerId);
+            CreativeBiomeService.ClearOverride(session.PeerId, session);
             TeleportTo(playerZdo, session.ReturnPosition, session.ReturnRotation);
             SessionsByPlayerId.Remove(playerId);
             Save();
@@ -183,11 +187,13 @@ namespace ValheimCreative.Features.Creative
                 zone.SlotId,
                 zone.Position,
                 ModConfig.CreativeRotationValue,
+                zone.Biome,
                 returnPosition,
                 returnRotation);
 
             SessionsByPlayerId[playerId] = session;
             SendCreativeKeys(session);
+            CreativeBiomeService.SendOverride(session);
             TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             Save();
             LogDebug($"Joined creative session for {session.PlayerName} ({session.PlayerId}) to owner {zone.OwnerPlayerId}.");
@@ -278,8 +284,38 @@ namespace ValheimCreative.Features.Creative
             }
 
             TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
+            CreativeBiomeService.SendOverride(session);
             ValheimCreativePlugin.ModLogger.LogInfo($"Reset creative zone {session.SlotId} at {Format(session.CreativePosition)}. Removed {removed} object(s).");
             return Lines($"Creative zone reset. Removed {removed} object(s).");
+        }
+
+        internal static IEnumerable<string> SetCreativeBiome(ZDO playerZdo, string biomeName)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("Use !creative before changing a creative zone biome.");
+            }
+
+            if (string.IsNullOrWhiteSpace(biomeName))
+            {
+                return Lines($"Creative biome: {session.CreativeBiome}.");
+            }
+
+            if (session.OwnerPlayerId != playerId)
+            {
+                return Lines("Only the creative zone owner can change its biome.");
+            }
+
+            if (!CreativeBiomeService.TryParseBiome(biomeName, out Heightmap.Biome biome))
+            {
+                return Lines("Unknown biome. Use Meadows, BlackForest, Swamp, Mountain, Plains, Mistlands, AshLands, DeepNorth, or Ocean.");
+            }
+
+            ApplyBiomeToZone(session.OwnerPlayerId, biome);
+            Save();
+            ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {session.SlotId} biome to {biome}.");
+            return Lines($"Creative biome set to {biome}.");
         }
 
         internal static IEnumerable<string> LoadBlueprint(ZDO playerZdo, string fileName)
@@ -301,9 +337,16 @@ namespace ValheimCreative.Features.Creative
                     session.OwnerPlayerId,
                     out int spawned,
                     out List<string> missingPrefabs,
+                    out Heightmap.Biome? metadataBiome,
                     out string error))
             {
                 return Lines(error);
+            }
+
+            if (metadataBiome.HasValue)
+            {
+                ApplyBiomeToZone(session.OwnerPlayerId, metadataBiome.Value);
+                Save();
             }
 
             ValheimCreativePlugin.ModLogger.LogInfo(
@@ -362,6 +405,7 @@ namespace ValheimCreative.Features.Creative
                     session,
                     playerId,
                     GetPlayerName(playerZdo, session.PlayerName),
+                    session.CreativeBiome,
                     out int saved,
                     out string error))
             {
@@ -415,6 +459,7 @@ namespace ValheimCreative.Features.Creative
                 {
                     TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out _);
                     SendCreativeKeys(session);
+                    CreativeBiomeService.SendOverride(session);
                     TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
                     session.AwaitingRespawn = false;
                     session.WasDead = false;
@@ -424,6 +469,7 @@ namespace ValheimCreative.Features.Creative
                 else if (!session.CreativeKeysSent)
                 {
                     SendCreativeKeys(session);
+                    CreativeBiomeService.SendOverride(session);
                 }
             }
         }
@@ -444,6 +490,7 @@ namespace ValheimCreative.Features.Creative
                 }
 
                 SendCreativeKeys(session);
+                CreativeBiomeService.SendOverride(session);
             }
         }
 
@@ -506,7 +553,8 @@ namespace ValheimCreative.Features.Creative
                         session.PlayerName,
                         slotIndex,
                         BuildZoneSlotId(slotIndex),
-                        GetZonePosition(slotIndex));
+                        GetZonePosition(slotIndex),
+                        session.CreativeBiome);
                 }
             }
 
@@ -556,11 +604,30 @@ namespace ValheimCreative.Features.Creative
 
             int slotIndex = GetNextZoneSlotIndex();
             string slotId = BuildZoneSlotId(slotIndex);
-            zone = new CreativeZone(ownerPlayerId, ownerPlayerName, slotIndex, slotId, GetZonePosition(slotIndex));
+            zone = new CreativeZone(ownerPlayerId, ownerPlayerName, slotIndex, slotId, GetZonePosition(slotIndex), CreativeBiomeService.DefaultBiome);
             ZonesByOwnerId[ownerPlayerId] = zone;
             SaveZones();
             LogDebug($"Allocated creative zone {slotId} for {ownerPlayerName} ({ownerPlayerId}) at {Format(zone.Position)}.");
             return zone;
+        }
+
+        private static void ApplyBiomeToZone(long ownerPlayerId, Heightmap.Biome biome)
+        {
+            if (ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
+            {
+                zone.Biome = biome;
+            }
+
+            foreach (CreativeSession activeSession in SessionsByPlayerId.Values)
+            {
+                if (activeSession.OwnerPlayerId != ownerPlayerId)
+                {
+                    continue;
+                }
+
+                activeSession.CreativeBiome = biome;
+                CreativeBiomeService.SendOverride(activeSession);
+            }
         }
 
         private static void ReconcileCreativeState()
@@ -572,7 +639,8 @@ namespace ValheimCreative.Features.Creative
                     zone.OwnerPlayerName,
                     zone.SlotIndex,
                     BuildZoneSlotId(zone.SlotIndex),
-                    GetZonePosition(zone.SlotIndex));
+                    GetZonePosition(zone.SlotIndex),
+                    zone.Biome);
             }
 
             foreach (CreativeSession session in SessionsByPlayerId.Values.ToList())
@@ -590,6 +658,7 @@ namespace ValheimCreative.Features.Creative
                     zone.SlotId,
                     zone.Position,
                     session.CreativeRotation,
+                    zone.Biome,
                     session.ReturnPosition,
                     session.ReturnRotation)
                 {

@@ -9,15 +9,23 @@ namespace ValheimCreative.Features.Creative
         internal int SlotIndex { get; }
         internal string SlotId { get; }
         internal Vector3 Position { get; }
+        internal Heightmap.Biome Biome { get; set; }
         internal string InviteCode => CreateInviteCode(OwnerPlayerId, SlotId);
 
-        internal CreativeZone(long ownerPlayerId, string ownerPlayerName, int slotIndex, string slotId, Vector3 position)
+        internal CreativeZone(
+            long ownerPlayerId,
+            string ownerPlayerName,
+            int slotIndex,
+            string slotId,
+            Vector3 position,
+            Heightmap.Biome biome)
         {
             OwnerPlayerId = ownerPlayerId;
             OwnerPlayerName = ownerPlayerName;
             SlotIndex = slotIndex;
             SlotId = slotId;
             Position = position;
+            Biome = biome;
         }
 
         internal static string CreateInviteCode(long ownerPlayerId, string slotId)
