@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using UnityEngine;
+using ValheimCreative.Configuration;
 
 namespace ValheimCreative.Features.Creative
 {
@@ -107,6 +108,9 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("creativeBiome")]
             public string CreativeBiome { get; set; } = string.Empty;
 
+            [JsonProperty("zoneRadius")]
+            public float ZoneRadius { get; set; }
+
             [JsonProperty("returnPosition")]
             public string ReturnPosition { get; set; } = "0,0,0";
 
@@ -115,6 +119,9 @@ namespace ValheimCreative.Features.Creative
 
             [JsonProperty("awaitingRespawn")]
             public bool AwaitingRespawn { get; set; }
+
+            [JsonProperty("grantCreativeKeys")]
+            public bool GrantCreativeKeys { get; set; } = true;
 
             public CreativeSession ToSession()
             {
@@ -127,8 +134,10 @@ namespace ValheimCreative.Features.Creative
                     ParseVector(CreativePosition),
                     Quaternion.Euler(ParseVector(CreativeRotation)),
                     ParseBiome(CreativeBiome),
+                    RadiusOrDefault(ZoneRadius, ModConfig.DefaultCreativeZoneRadiusValue),
                     ParseVector(ReturnPosition),
-                    Quaternion.Euler(ParseVector(ReturnRotation)))
+                    Quaternion.Euler(ParseVector(ReturnRotation)),
+                    GrantCreativeKeys)
                 {
                     AwaitingRespawn = AwaitingRespawn
                 };
@@ -146,9 +155,11 @@ namespace ValheimCreative.Features.Creative
                     CreativePosition = Format(session.CreativePosition),
                     CreativeRotation = Format(session.CreativeRotation.eulerAngles),
                     CreativeBiome = session.CreativeBiome.ToString(),
+                    ZoneRadius = session.ZoneRadius,
                     ReturnPosition = Format(session.ReturnPosition),
                     ReturnRotation = Format(session.ReturnRotation.eulerAngles),
-                    AwaitingRespawn = session.AwaitingRespawn
+                    AwaitingRespawn = session.AwaitingRespawn,
+                    GrantCreativeKeys = session.GrantCreativeKeys
                 };
             }
         }
@@ -173,9 +184,19 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("biome")]
             public string Biome { get; set; } = string.Empty;
 
+            [JsonProperty("radius")]
+            public float Radius { get; set; }
+
             public CreativeZone ToZone()
             {
-                return new CreativeZone(OwnerPlayerId, OwnerPlayerName, SlotIndex, SlotId, ParseVector(Position), ParseBiome(Biome));
+                return new CreativeZone(
+                    OwnerPlayerId,
+                    OwnerPlayerName,
+                    SlotIndex,
+                    SlotId,
+                    ParseVector(Position),
+                    ParseBiome(Biome),
+                    RadiusOrDefault(Radius, ModConfig.DefaultCreativeZoneRadiusValue));
             }
 
             public static ZoneRecord FromZone(CreativeZone zone)
@@ -187,7 +208,8 @@ namespace ValheimCreative.Features.Creative
                     SlotIndex = zone.SlotIndex,
                     SlotId = zone.SlotId,
                     Position = Format(zone.Position),
-                    Biome = zone.Biome.ToString()
+                    Biome = zone.Biome.ToString(),
+                    Radius = zone.Radius
                 };
             }
         }
@@ -213,6 +235,11 @@ namespace ValheimCreative.Features.Creative
             }
 
             return new Vector3(x, y, z);
+        }
+
+        private static float RadiusOrDefault(float radius, float fallback)
+        {
+            return radius > 0f ? radius : fallback;
         }
 
         private static Heightmap.Biome ParseBiome(string raw)

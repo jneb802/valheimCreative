@@ -17,7 +17,6 @@ namespace ValheimCreative.Features.Creative
         private const float CreativeLocationObjectCleanupRadius = 80f;
         private const float CreativeLocationObjectCleanupRetrySeconds = 1f;
         private const float CreativeLocationObjectCleanupDurationSeconds = 8f;
-        private const float CreativeZoneResetRadius = 128f;
         private static readonly string[] CreativeLocationObjectCleanupPrefabs =
         {
             "BossStone_TheQueen",
@@ -79,6 +78,7 @@ namespace ValheimCreative.Features.Creative
                 zone.Position,
                 ModConfig.CreativeRotationValue,
                 zone.Biome,
+                zone.Radius,
                 playerZdo.GetPosition(),
                 playerZdo.GetRotation());
 
@@ -188,6 +188,7 @@ namespace ValheimCreative.Features.Creative
                 zone.Position,
                 ModConfig.CreativeRotationValue,
                 zone.Biome,
+                zone.Radius,
                 returnPosition,
                 returnRotation);
 
@@ -276,7 +277,7 @@ namespace ValheimCreative.Features.Creative
             PendingLocationObjectCleanups.RemoveAll(cleanup => cleanup.SlotId.Equals(session.SlotId, StringComparison.Ordinal));
             Vector2i zone = ZoneSystem.GetZone(session.CreativePosition);
             ZoneSystem.instance.m_locationInstances.Remove(zone);
-            int removed = DestroyCreativeZoneZdos(session.CreativePosition);
+            int removed = DestroyCreativeZoneZdos(session.CreativePosition, session.ZoneRadius);
 
             if (!TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out string error))
             {
@@ -316,6 +317,58 @@ namespace ValheimCreative.Features.Creative
             Save();
             ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {session.SlotId} biome to {biome}.");
             return Lines($"Creative biome set to {biome}.");
+        }
+
+        internal static IEnumerable<string> ListCreativeZoneSizes()
+        {
+            if (ZonesByOwnerId.Count == 0)
+            {
+                return Lines("No creative zones are allocated.");
+            }
+
+            return ZonesByOwnerId.Values
+                .OrderBy(zone => zone.SlotIndex)
+                .Select(zone => $"{zone.OwnerPlayerId}: {zone.OwnerPlayerName}, slot={zone.SlotId}, radius={FormatRadius(zone.Radius)}m, biome={zone.Biome}");
+        }
+
+        internal static IEnumerable<string> GetOrSetCreativeZoneRadius(long ownerPlayerId, float? radius)
+        {
+            if (!IsServerReady())
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            if (!TryResolveCreativeZoneOwnerId(ownerPlayerId, out long resolvedOwnerId) ||
+                !ZonesByOwnerId.TryGetValue(resolvedOwnerId, out CreativeZone zone))
+            {
+                return Lines($"Creative zone was not found for player {ownerPlayerId}.");
+            }
+
+            if (!radius.HasValue)
+            {
+                return Lines($"Creative zone {zone.SlotId} radius={FormatRadius(zone.Radius)}m.");
+            }
+
+            zone.Radius = Mathf.Max(1f, radius.Value);
+            ApplyRadiusToZone(zone.OwnerPlayerId, zone.Radius);
+            Save();
+            ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {zone.SlotId} radius to {FormatRadius(zone.Radius)}m.");
+            return Lines($"Creative zone {zone.SlotId} radius set to {FormatRadius(zone.Radius)}m.");
+        }
+
+        internal static void ApplyRadiusToActiveSlot(string slotId, float radius)
+        {
+            float normalizedRadius = Mathf.Max(1f, radius);
+            foreach (CreativeSession activeSession in SessionsByPlayerId.Values)
+            {
+                if (!activeSession.SlotId.Equals(slotId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                activeSession.ZoneRadius = normalizedRadius;
+                CreativeBiomeService.SendOverride(activeSession);
+            }
         }
 
         internal static IEnumerable<string> LoadBlueprint(ZDO playerZdo, string fileName)
@@ -458,7 +511,7 @@ namespace ValheimCreative.Features.Creative
                 if (session.AwaitingRespawn || session.WasDead)
                 {
                     TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out _);
-                    SendCreativeKeys(session);
+                    SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
                     TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
                     session.AwaitingRespawn = false;
@@ -468,7 +521,7 @@ namespace ValheimCreative.Features.Creative
                 }
                 else if (!session.CreativeKeysSent)
                 {
-                    SendCreativeKeys(session);
+                    SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
                 }
             }
@@ -489,7 +542,7 @@ namespace ValheimCreative.Features.Creative
                     session.PeerId = ResolvePeerId(playerZdo, session.PeerId);
                 }
 
-                SendCreativeKeys(session);
+                SendSessionKeys(session);
                 CreativeBiomeService.SendOverride(session);
             }
         }
@@ -499,6 +552,16 @@ namespace ValheimCreative.Features.Creative
             return ZDOMan.instance != null && !characterId.IsNone()
                 ? ZDOMan.instance.GetZDO(characterId)
                 : null;
+        }
+
+        internal static CreativeSession? GetSession(long playerId)
+        {
+            return SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session) ? session : null;
+        }
+
+        internal static void SetSession(CreativeSession session)
+        {
+            SessionsByPlayerId[session.PlayerId] = session;
         }
 
         internal static string DescribePlayerLookup(ZDOID characterId)
@@ -554,7 +617,8 @@ namespace ValheimCreative.Features.Creative
                         slotIndex,
                         BuildZoneSlotId(slotIndex),
                         GetZonePosition(slotIndex),
-                        session.CreativeBiome);
+                        session.CreativeBiome,
+                        session.ZoneRadius);
                 }
             }
 
@@ -604,7 +668,14 @@ namespace ValheimCreative.Features.Creative
 
             int slotIndex = GetNextZoneSlotIndex();
             string slotId = BuildZoneSlotId(slotIndex);
-            zone = new CreativeZone(ownerPlayerId, ownerPlayerName, slotIndex, slotId, GetZonePosition(slotIndex), CreativeBiomeService.DefaultBiome);
+            zone = new CreativeZone(
+                ownerPlayerId,
+                ownerPlayerName,
+                slotIndex,
+                slotId,
+                GetZonePosition(slotIndex),
+                CreativeBiomeService.DefaultBiome,
+                ModConfig.DefaultCreativeZoneRadiusValue);
             ZonesByOwnerId[ownerPlayerId] = zone;
             SaveZones();
             LogDebug($"Allocated creative zone {slotId} for {ownerPlayerName} ({ownerPlayerId}) at {Format(zone.Position)}.");
@@ -630,6 +701,26 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
+        private static void ApplyRadiusToZone(long ownerPlayerId, float radius)
+        {
+            float normalizedRadius = Mathf.Max(1f, radius);
+            if (ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
+            {
+                zone.Radius = normalizedRadius;
+            }
+
+            foreach (CreativeSession activeSession in SessionsByPlayerId.Values)
+            {
+                if (activeSession.OwnerPlayerId != ownerPlayerId)
+                {
+                    continue;
+                }
+
+                activeSession.ZoneRadius = normalizedRadius;
+                CreativeBiomeService.SendOverride(activeSession);
+            }
+        }
+
         private static void ReconcileCreativeState()
         {
             foreach (CreativeZone zone in ZonesByOwnerId.Values.ToList())
@@ -640,7 +731,8 @@ namespace ValheimCreative.Features.Creative
                     zone.SlotIndex,
                     BuildZoneSlotId(zone.SlotIndex),
                     GetZonePosition(zone.SlotIndex),
-                    zone.Biome);
+                    zone.Biome,
+                    zone.Radius);
             }
 
             foreach (CreativeSession session in SessionsByPlayerId.Values.ToList())
@@ -659,8 +751,10 @@ namespace ValheimCreative.Features.Creative
                     zone.Position,
                     session.CreativeRotation,
                     zone.Biome,
+                    zone.Radius,
                     session.ReturnPosition,
-                    session.ReturnRotation)
+                    session.ReturnRotation,
+                    session.GrantCreativeKeys)
                 {
                     AwaitingRespawn = session.AwaitingRespawn,
                     WasDead = session.WasDead,
@@ -702,7 +796,7 @@ namespace ValheimCreative.Features.Creative
             return $"{ModConfig.CreativeSlotId.Value}_{slotIndex:000}";
         }
 
-        private static ZDO? FindPlayerZdo(long playerId)
+        internal static ZDO? FindPlayerZdo(long playerId)
         {
             if (ZNet.instance == null || ZDOMan.instance == null)
             {
@@ -726,7 +820,7 @@ namespace ValheimCreative.Features.Creative
             return null;
         }
 
-        private static ZDO? FindPlayerZdoByPlatformId(string platformId, out string matchedIdentifier)
+        internal static ZDO? FindPlayerZdoByPlatformId(string platformId, out string matchedIdentifier)
         {
             matchedIdentifier = string.Empty;
             if (ZNet.instance == null || ZDOMan.instance == null || string.IsNullOrWhiteSpace(platformId))
@@ -792,7 +886,7 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static bool IsServerReady()
+        internal static bool IsServerReady()
         {
             return ZNet.instance != null &&
                    ZNet.instance.IsServer() &&
@@ -805,24 +899,24 @@ namespace ValheimCreative.Features.Creative
             return playerZdo.GetBool(ZDOVars.s_dead);
         }
 
-        private static long ResolvePeerId(ZDO playerZdo, long fallback)
+        internal static long ResolvePeerId(ZDO playerZdo, long fallback)
         {
             long owner = playerZdo.GetOwner();
             return owner != 0L ? owner : fallback;
         }
 
-        private static long GetPlayerId(ZDO playerZdo)
+        internal static long GetPlayerId(ZDO playerZdo)
         {
             return playerZdo.GetLong(ZDOVars.s_playerID);
         }
 
-        private static string GetPlayerName(ZDO playerZdo, string fallback)
+        internal static string GetPlayerName(ZDO playerZdo, string fallback)
         {
             string name = playerZdo.GetString(ZDOVars.s_playerName, fallback);
             return string.IsNullOrWhiteSpace(name) ? fallback : name;
         }
 
-        private static void TeleportTo(ZDO playerZdo, Vector3 position, Quaternion rotation)
+        internal static void TeleportTo(ZDO playerZdo, Vector3 position, Quaternion rotation)
         {
             long owner = playerZdo.GetOwner();
             if (owner == 0L)
@@ -834,7 +928,7 @@ namespace ValheimCreative.Features.Creative
             ZRoutedRpc.instance.InvokeRoutedRPC(owner, playerZdo.m_uid, "RPC_TeleportTo", position, rotation, true);
         }
 
-        private static bool TryEnsureCreativeLocation(Vector3 position, string slotId, out string error)
+        internal static bool TryEnsureCreativeLocation(Vector3 position, string slotId, out string error)
         {
             error = string.Empty;
             if (!ModConfig.SpawnCreativeLocation.Value)
@@ -957,10 +1051,12 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static int DestroyCreativeZoneZdos(Vector3 position)
+        internal static int DestroyCreativeZoneZdos(Vector3 position, float radius)
         {
             List<ZDO> objects = new();
-            ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(position), 2, 0, objects);
+            float maxDistance = Mathf.Max(1f, radius);
+            int sectorArea = Mathf.CeilToInt(maxDistance / ZoneSystem.c_ZoneSize) + 1;
+            ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(position), sectorArea, 0, objects);
             int removed = 0;
 
             foreach (ZDO zdo in objects.Distinct())
@@ -968,7 +1064,7 @@ namespace ValheimCreative.Features.Creative
                 if (zdo == null ||
                     !zdo.IsValid() ||
                     IsPlayerZdo(zdo) ||
-                    Utils.DistanceXZ(zdo.GetPosition(), position) > CreativeZoneResetRadius)
+                    Utils.DistanceXZ(zdo.GetPosition(), position) > maxDistance)
                 {
                     continue;
                 }
@@ -983,6 +1079,35 @@ namespace ValheimCreative.Features.Creative
             }
 
             return removed;
+        }
+
+        private static bool TryResolveCreativeZoneOwnerId(long rawId, out long ownerPlayerId)
+        {
+            if (ZonesByOwnerId.ContainsKey(rawId))
+            {
+                ownerPlayerId = rawId;
+                return true;
+            }
+
+            string platformId = rawId.ToString(CultureInfo.InvariantCulture);
+            ZDO? playerZdo = FindPlayerZdo(rawId) ?? FindPlayerZdoByPlatformId(platformId, out _);
+            if (playerZdo != null)
+            {
+                long playerId = GetPlayerId(playerZdo);
+                if (ZonesByOwnerId.ContainsKey(playerId))
+                {
+                    ownerPlayerId = playerId;
+                    return true;
+                }
+            }
+
+            ownerPlayerId = 0L;
+            return false;
+        }
+
+        internal static string FormatRadius(float radius)
+        {
+            return Mathf.Max(1f, radius).ToString("0.##", CultureInfo.InvariantCulture);
         }
 
         private static bool IsPlayerZdo(ZDO zdo)
@@ -1086,6 +1211,18 @@ namespace ValheimCreative.Features.Creative
             session.CreativeKeysSent = true;
         }
 
+        internal static void SendSessionKeys(CreativeSession session)
+        {
+            if (session.GrantCreativeKeys)
+            {
+                SendCreativeKeys(session);
+                return;
+            }
+
+            SendNormalKeys(session.PeerId);
+            session.CreativeKeysSent = true;
+        }
+
         private static void SendNormalKeys(long peerId)
         {
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, "GlobalKeys", ZoneSystem.instance.GetGlobalKeys());
@@ -1100,7 +1237,7 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static IEnumerable<string> Lines(string line)
+        internal static IEnumerable<string> Lines(string line)
         {
             return new[] { line };
         }

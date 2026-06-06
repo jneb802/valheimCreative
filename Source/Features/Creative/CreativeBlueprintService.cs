@@ -343,7 +343,7 @@ namespace ValheimCreative.Features.Creative
         private static List<BlueprintPieceEntry> CollectPieces(CreativeSession session, long creatorId)
         {
             List<ZDO> objects = new();
-            float maxDistance = Mathf.Max(1f, ModConfig.BlueprintSaveRadius.Value);
+            float maxDistance = Mathf.Max(1f, session.ZoneRadius);
             int sectorArea = Mathf.CeilToInt(maxDistance / ZoneSystem.c_ZoneSize) + 1;
             ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(session.CreativePosition), sectorArea, 0, objects);
             Quaternion inverseRotation = Quaternion.Inverse(session.CreativeRotation);
