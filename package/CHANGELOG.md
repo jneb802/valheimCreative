@@ -1,3 +1,15 @@
+# 0.2.7
+
+- Restricted `!creative size` and `!creative offset` to server admins.
+
+# 0.2.6
+
+- Saved all player-built pieces in a shared creative zone, including invited players' pieces.
+- Blocked natural and event creature spawn points inside allocated creative zones.
+- Added `!creative size` and `!creative size <radius>` for in-game creative zone size changes.
+- Added `!creative offset <blueprintName> [loadYOffset]` and `creative_blueprint_offset` for blueprint vertical offset management.
+- Added the serving tray to `!creative tools`.
+
 # 0.2.5
 
 - Fixed slow creative chat commands executing once per chat recipient instead of once per sender.

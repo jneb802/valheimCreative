@@ -7,6 +7,7 @@ namespace ValheimCreative.Features.Creative
     internal static class CreativeConsoleCommands
     {
         private const string LoadPlayerCommand = "creative_load_player";
+        private const string BlueprintOffsetCommand = "creative_blueprint_offset";
         private const string ZoneSizesCommand = "creative_zone_sizes";
         private const string ZoneSizeCommand = "creative_zone_size";
         private const string SiegeListCommand = "creative_siege_list";
@@ -24,7 +25,11 @@ namespace ValheimCreative.Features.Creative
 
         internal static void Register()
         {
-            if (_registered && Terminal.commands.ContainsKey(LoadPlayerCommand) && Terminal.commands.ContainsKey(SiegeEnterCommand) && Terminal.commands.ContainsKey(SiegeSizeCommand))
+            if (_registered &&
+                Terminal.commands.ContainsKey(LoadPlayerCommand) &&
+                Terminal.commands.ContainsKey(BlueprintOffsetCommand) &&
+                Terminal.commands.ContainsKey(SiegeEnterCommand) &&
+                Terminal.commands.ContainsKey(SiegeSizeCommand))
             {
                 return;
             }
@@ -56,6 +61,65 @@ namespace ValheimCreative.Features.Creative
                     foreach (string line in CreativeSessionManager.LoadBlueprintForPlayerId(playerId, blueprintName))
                     {
                         args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                BlueprintOffsetCommand,
+                "Show or set a blueprint load Y offset. Usage: creative_blueprint_offset <blueprintName> [loadYOffset]",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 2)
+                    {
+                        args.Context.AddString("Usage: creative_blueprint_offset <blueprintName> [loadYOffset]");
+                        return;
+                    }
+
+                    string blueprintName = args[1].Trim();
+                    if (string.IsNullOrWhiteSpace(blueprintName))
+                    {
+                        args.Context.AddString("blueprintName is required.");
+                        return;
+                    }
+
+                    if (args.Length == 2)
+                    {
+                        if (CreativeBlueprintService.TryGetBlueprintLoadYOffset(blueprintName, out float currentOffset, out string currentSafeName, out string getError))
+                        {
+                            args.Context.AddString($"{currentSafeName} loadYOffset={currentOffset.ToString("G9", CultureInfo.InvariantCulture)}.");
+                        }
+                        else
+                        {
+                            args.Context.AddString(getError);
+                        }
+
+                        return;
+                    }
+
+                    if (args.Length > 3)
+                    {
+                        args.Context.AddString("Usage: creative_blueprint_offset <blueprintName> [loadYOffset]");
+                        return;
+                    }
+
+                    if (!float.TryParse(args[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float offset))
+                    {
+                        args.Context.AddString("loadYOffset must be a number.");
+                        return;
+                    }
+
+                    if (CreativeBlueprintService.TrySetBlueprintLoadYOffset(blueprintName, offset, out string safeName, out string error))
+                    {
+                        args.Context.AddString($"{safeName} loadYOffset set to {offset.ToString("G9", CultureInfo.InvariantCulture)}.");
+                    }
+                    else
+                    {
+                        args.Context.AddString(error);
                     }
                 });
 

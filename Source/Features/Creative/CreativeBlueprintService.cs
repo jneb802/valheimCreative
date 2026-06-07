@@ -256,7 +256,6 @@ namespace ValheimCreative.Features.Creative
         internal static bool TrySaveBlueprint(
             string fileName,
             CreativeSession session,
-            long creatorId,
             string creatorName,
             Heightmap.Biome biome,
             out int saved,
@@ -283,7 +282,7 @@ namespace ValheimCreative.Features.Creative
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            List<BlueprintPieceEntry> pieces = CollectPieces(session, creatorId);
+            List<BlueprintPieceEntry> pieces = CollectPieces(session);
             if (pieces.Count == 0)
             {
                 error = "No player-built pieces were found in this creative zone.";
@@ -306,17 +305,64 @@ namespace ValheimCreative.Features.Creative
             return true;
         }
 
+        internal static bool TryGetBlueprintLoadYOffset(string fileName, out float offset, out string safeName, out string error)
+        {
+            offset = 0f;
+            safeName = string.Empty;
+            error = string.Empty;
+
+            try
+            {
+                string path = ResolveBlueprintPath(fileName);
+                safeName = Path.GetFileName(path);
+            }
+            catch (ArgumentException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+
+            offset = GetMetadata(safeName).LoadYOffset;
+            return true;
+        }
+
+        internal static bool TrySetBlueprintLoadYOffset(string fileName, float offset, out string safeName, out string error)
+        {
+            safeName = string.Empty;
+            error = string.Empty;
+
+            try
+            {
+                string path = ResolveBlueprintPath(fileName);
+                safeName = Path.GetFileName(path);
+            }
+            catch (ArgumentException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+
+            BlueprintMetadata currentMetadata = GetMetadata(safeName);
+            WriteMetadata(safeName, new BlueprintMetadata(offset, currentMetadata.Biome));
+            return true;
+        }
+
         private static void WriteMetadata(string blueprintFileName, BlueprintMetadata metadata)
         {
             string path = GetBlueprintMetadataPath();
             JObject root = ReadMetadataRoot(path);
             JObject blueprints = root["blueprints"] as JObject ?? new JObject();
             root["blueprints"] = blueprints;
-            blueprints[blueprintFileName] = new JObject
+            JObject entry = new()
             {
-                ["loadYOffset"] = metadata.LoadYOffset,
-                ["biome"] = metadata.Biome?.ToString() ?? CreativeBiomeService.DefaultBiome.ToString()
+                ["loadYOffset"] = metadata.LoadYOffset
             };
+            if (metadata.Biome.HasValue)
+            {
+                entry["biome"] = metadata.Biome.Value.ToString();
+            }
+
+            blueprints[blueprintFileName] = entry;
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, root.ToString());
@@ -340,7 +386,7 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static List<BlueprintPieceEntry> CollectPieces(CreativeSession session, long creatorId)
+        private static List<BlueprintPieceEntry> CollectPieces(CreativeSession session)
         {
             List<ZDO> objects = new();
             float maxDistance = Mathf.Max(1f, session.ZoneRadius);
@@ -370,7 +416,7 @@ namespace ValheimCreative.Features.Creative
                     continue;
                 }
 
-                if (zdo.GetLong(ZDOVars.s_creator) != creatorId)
+                if (zdo.GetLong(ZDOVars.s_creator) == 0L)
                 {
                     continue;
                 }
