@@ -1,3 +1,7 @@
+# 0.2.5
+
+- Fixed slow creative chat commands executing once per chat recipient instead of once per sender.
+
 # 0.2.4
 
 - Added `!creative biome` and `!creative biome <biome>` for creative zone biome paint selection.

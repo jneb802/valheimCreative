@@ -8,8 +8,9 @@ namespace ValheimCreative.Features.Creative
     internal static class CreativeChatCommands
     {
         private static readonly int SayHash = "Say".GetStableHashCode();
-        private const float CommandDedupeSeconds = 1f;
-        private static readonly Dictionary<string, float> RecentCommands = new();
+        private const float DefaultCommandDedupeSeconds = 1f;
+        private const float SlowCommandDedupeSeconds = 30f;
+        private static readonly Dictionary<string, float> RecentCommandExpirations = new();
 
         internal static bool TryConsumeRoutedSay(ZRoutedRpc.RoutedRPCData rpcData)
         {
@@ -36,7 +37,7 @@ namespace ValheimCreative.Features.Creative
                     return false;
                 }
 
-                if (IsDuplicateCommand(rpcData, text))
+                if (IsDuplicateCommand(rpcData, text, command))
                 {
                     return true;
                 }
@@ -99,13 +100,13 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
-        private static bool IsDuplicateCommand(ZRoutedRpc.RoutedRPCData rpcData, string text)
+        private static bool IsDuplicateCommand(ZRoutedRpc.RoutedRPCData rpcData, string text, CreativeCommand command)
         {
             float now = Time.realtimeSinceStartup;
             List<string> expired = new();
-            foreach (KeyValuePair<string, float> recent in RecentCommands)
+            foreach (KeyValuePair<string, float> recent in RecentCommandExpirations)
             {
-                if (now - recent.Value > CommandDedupeSeconds)
+                if (now > recent.Value)
                 {
                     expired.Add(recent.Key);
                 }
@@ -113,17 +114,26 @@ namespace ValheimCreative.Features.Creative
 
             foreach (string keyToRemove in expired)
             {
-                RecentCommands.Remove(keyToRemove);
+                RecentCommandExpirations.Remove(keyToRemove);
             }
 
             string key = $"{rpcData.m_senderPeerID}:{rpcData.m_targetZDO.UserID}:{rpcData.m_targetZDO.ID}:{text.Trim().ToLowerInvariant()}";
-            if (RecentCommands.TryGetValue(key, out float seenAt) && now - seenAt <= CommandDedupeSeconds)
+            if (RecentCommandExpirations.TryGetValue(key, out float expiresAt) && now <= expiresAt)
             {
                 return true;
             }
 
-            RecentCommands[key] = now;
+            RecentCommandExpirations[key] = now + GetDedupeSeconds(command);
             return false;
+        }
+
+        private static float GetDedupeSeconds(CreativeCommand command)
+        {
+            return command == CreativeCommand.Reset ||
+                   command == CreativeCommand.Load ||
+                   command == CreativeCommand.Save
+                ? SlowCommandDedupeSeconds
+                : DefaultCommandDedupeSeconds;
         }
 
         internal static IEnumerable<string> ExecuteCommand(
