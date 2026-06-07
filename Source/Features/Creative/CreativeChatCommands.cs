@@ -62,6 +62,14 @@ namespace ValheimCreative.Features.Creative
                 }
 
                 Vector3 position = playerZdo.GetPosition() + Vector3.up * 1.8f;
+                if (RequiresAdmin(command) && !IsSenderAdmin(rpcData.m_senderPeerID))
+                {
+                    ValheimCreativePlugin.ModLogger.LogWarning(
+                        $"Creative command {command} from peer {rpcData.m_senderPeerID} user {userInfo.Name} failed: sender is not admin.");
+                    SendPrivateLine(rpcData.m_senderPeerID, position, userInfo, "Only server admins can use this creative command.");
+                    return true;
+                }
+
                 IEnumerable<string> response;
                 if (CreativeInventoryGate.RequiresEmptyInventory(command))
                 {
@@ -134,6 +142,29 @@ namespace ValheimCreative.Features.Creative
                    command == CreativeCommand.Save
                 ? SlowCommandDedupeSeconds
                 : DefaultCommandDedupeSeconds;
+        }
+
+        private static bool RequiresAdmin(CreativeCommand command)
+        {
+            return command == CreativeCommand.Size ||
+                   command == CreativeCommand.Offset;
+        }
+
+        private static bool IsSenderAdmin(long peerId)
+        {
+            if (ZNet.instance == null)
+            {
+                return false;
+            }
+
+            ZNetPeer peer = ZNet.instance.GetPeer(peerId);
+            if (peer == null)
+            {
+                return false;
+            }
+
+            string hostName = peer.m_socket?.GetHostName() ?? string.Empty;
+            return ZNet.instance.IsAdmin(hostName);
         }
 
         internal static IEnumerable<string> ExecuteCommand(

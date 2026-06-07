@@ -21,14 +21,15 @@ Invite commands:
 !creative save blueprintName
 !creative biome
 !creative biome Plains
-!creative size
-!creative size 192
-!creative offset blueprintName
-!creative offset blueprintName -1.25
+!creative size                 # admin only
+!creative size 192             # admin only
+!creative offset blueprintName # admin only
+!creative offset blueprintName -1.25 # admin only
 ```
 
 Blueprint loads use `blueprint-metadata.json` in the configured blueprint
 directory. Use deployed filenames as keys with `loadYOffset` values in meters
 and optional `biome` values. Negative `loadYOffset` values lower the loaded
-build. Blueprint save includes invited players' pieces when they are built
-inside the owner's creative zone.
+build. Admins can read or change offsets in game with `!creative offset`.
+Blueprint save includes invited players' pieces when they are built inside the
+owner's creative zone.

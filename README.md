@@ -11,7 +11,7 @@ The server owns session state, zone allocation, location spawning, teleporting, 
 - Per-player zones: each owner gets a persistent creative zone allocation. Zone centers are spaced 192m apart by default.
 - Invites: `!creative invite` shows the owner's invite code. `!creative join CODE` teleports another player to that owner's active zone.
 - Blueprint save includes all player-built pieces in the owner's creative radius, including pieces built by invited players.
-- `!creative size <radius>` lets a zone owner change the active creative radius in game.
+- `!creative size <radius>` lets a server admin change the active creative radius in game.
 - Death recovery: if a creative-session player dies, the server waits for vanilla respawn, reapplies creative keys, and teleports them back to the creative slot.
 - Natural and event creature spawns are blocked inside allocated creative zones.
 - Creative location spawn: the server spawns and registers the configured creative location the first time a player enters creative mode.
@@ -43,10 +43,10 @@ Install `valheimCreative.dll` on the dedicated server.
 !creative save blueprintName
 !creative biome
 !creative biome Plains
-!creative size
-!creative size 192
-!creative offset blueprintName
-!creative offset blueprintName -1.25
+!creative size                 # admin only
+!creative size 192             # admin only
+!creative offset blueprintName # admin only
+!creative offset blueprintName -1.25 # admin only
 ```
 
 ## Blueprint Metadata
@@ -70,7 +70,7 @@ Negative `loadYOffset` values lower the loaded build. Positive values raise it.
 Supported biome values include `Meadows`, `BlackForest`, `Swamp`, `Mountain`,
 `Plains`, `Mistlands`, `AshLands`, `DeepNorth`, and `Ocean`.
 
-The same offset value can be read or changed in game with
+The same offset value can be read or changed by admins in game with
 `!creative offset <blueprintName> [loadYOffset]`, or from the server console
 with `creative_blueprint_offset <blueprintName> [loadYOffset]`.
 

@@ -1,3 +1,7 @@
+# 0.2.7
+
+- Restricted `!creative size` and `!creative offset` to server admins.
+
 # 0.2.6
 
 - Saved all player-built pieces in a shared creative zone, including invited players' pieces.
