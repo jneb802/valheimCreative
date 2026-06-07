@@ -11,6 +11,8 @@ namespace ValheimCreative.Features.Creative
         Tools,
         Reset,
         Biome,
+        Size,
+        Offset,
         Load,
         Save
     }

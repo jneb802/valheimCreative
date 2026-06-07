@@ -43,15 +43,15 @@ namespace ValheimCreative.Features.Creative
 
         internal static void SendOverride(CreativeSession session)
         {
-            SendOverride(session.PeerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: true);
+            SendOverride(session.PeerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: true, suppressSpawns: session.OwnerPlayerId != 0L);
         }
 
         internal static void ClearOverride(long peerId, CreativeSession session)
         {
-            SendOverride(peerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: false);
+            SendOverride(peerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: false, suppressSpawns: false);
         }
 
-        private static void SendOverride(long peerId, string slotId, Vector3 center, float radius, Heightmap.Biome biome, bool enabled)
+        private static void SendOverride(long peerId, string slotId, Vector3 center, float radius, Heightmap.Biome biome, bool enabled, bool suppressSpawns)
         {
             if (peerId == 0L || ZRoutedRpc.instance == null)
             {
@@ -66,6 +66,7 @@ namespace ValheimCreative.Features.Creative
             package.Write(center);
             package.Write(Mathf.Max(1f, radius));
             package.Write((int)biome);
+            package.Write(suppressSpawns);
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, OverrideRpcName, package);
         }
     }

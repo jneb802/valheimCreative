@@ -153,6 +153,8 @@ namespace ValheimCreative.Features.Creative
                 CreativeCommand.Tools => CreativeSessionManager.SpawnTools(playerZdo),
                 CreativeCommand.Reset => CreativeSessionManager.ResetCreativeZone(playerZdo),
                 CreativeCommand.Biome => CreativeSessionManager.SetCreativeBiome(playerZdo, commandArgument),
+                CreativeCommand.Size => CreativeSessionManager.GetOrSetCurrentCreativeZoneRadius(playerZdo, commandArgument),
+                CreativeCommand.Offset => CreativeSessionManager.GetOrSetBlueprintLoadOffset(playerZdo, commandArgument),
                 CreativeCommand.Load => CreativeSessionManager.LoadBlueprint(playerZdo, commandArgument),
                 CreativeCommand.Save => CreativeSessionManager.SaveBlueprint(playerZdo, commandArgument),
                 _ => Array.Empty<string>()
@@ -209,6 +211,12 @@ namespace ValheimCreative.Features.Creative
                 return true;
             }
 
+            if (trimmed.Equals(creative + " size", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Size;
+                return true;
+            }
+
             string biomePrefix = creative + " biome ";
             if (trimmed.StartsWith(biomePrefix, StringComparison.OrdinalIgnoreCase))
             {
@@ -220,6 +228,34 @@ namespace ValheimCreative.Features.Creative
                 }
 
                 command = CreativeCommand.Biome;
+                return true;
+            }
+
+            string sizePrefix = creative + " size ";
+            if (trimmed.StartsWith(sizePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                commandArgument = trimmed.Substring(sizePrefix.Length).Trim();
+                if (commandArgument.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Size;
+                return true;
+            }
+
+            string offsetPrefix = creative + " offset ";
+            if (trimmed.StartsWith(offsetPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                commandArgument = trimmed.Substring(offsetPrefix.Length).Trim();
+                if (commandArgument.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Offset;
                 return true;
             }
 

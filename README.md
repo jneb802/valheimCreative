@@ -6,11 +6,14 @@ The server owns session state, zone allocation, location spawning, teleporting, 
 
 ## Current behavior
 
-- `!creative`: starts a creative session if the player is in bed, sends that player a targeted fake world-key list with creative build keys, then teleports them to their off-map build zone.
+- `!creative`: starts a creative session, sends that player a targeted fake world-key list with creative build keys, then teleports them to their off-map build zone.
 - `!return`: sends the player the normal world-key list, teleports them back to their saved entry position, and ends the session.
 - Per-player zones: each owner gets a persistent creative zone allocation. Zone centers are spaced 192m apart by default.
 - Invites: `!creative invite` shows the owner's invite code. `!creative join CODE` teleports another player to that owner's active zone.
+- Blueprint save includes all player-built pieces in the owner's creative radius, including pieces built by invited players.
+- `!creative size <radius>` lets a zone owner change the active creative radius in game.
 - Death recovery: if a creative-session player dies, the server waits for vanilla respawn, reapplies creative keys, and teleports them back to the creative slot.
+- Natural and event creature spawns are blocked inside allocated creative zones.
 - Creative location spawn: the server spawns and registers the configured creative location the first time a player enters creative mode.
 - Global key changes: when the real server global-key list changes, the mod resends creative keys only to active creative players.
 
@@ -34,8 +37,16 @@ Install `valheimCreative.dll` on the dedicated server.
 !creative status
 !creative invite
 !creative join CODE
+!creative tools
+!creative reset
+!creative load blueprintName
+!creative save blueprintName
 !creative biome
 !creative biome Plains
+!creative size
+!creative size 192
+!creative offset blueprintName
+!creative offset blueprintName -1.25
 ```
 
 ## Blueprint Metadata
@@ -58,6 +69,10 @@ loads, create `blueprint-metadata.json` in the configured blueprint directory:
 Negative `loadYOffset` values lower the loaded build. Positive values raise it.
 Supported biome values include `Meadows`, `BlackForest`, `Swamp`, `Mountain`,
 `Plains`, `Mistlands`, `AshLands`, `DeepNorth`, and `Ocean`.
+
+The same offset value can be read or changed in game with
+`!creative offset <blueprintName> [loadYOffset]`, or from the server console
+with `creative_blueprint_offset <blueprintName> [loadYOffset]`.
 
 ## Expand World files
 

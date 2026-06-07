@@ -30,7 +30,7 @@ namespace ValheimCreative.Features.Creative
             "StoneSpawner_TheQueen",
             "StoneSpawner_Fader"
         };
-        private static readonly string[] CreativeToolPrefabs = { "Hoe", "Hammer", "Cultivator", "PickaxeAntler" };
+        private static readonly string[] CreativeToolPrefabs = { "Hoe", "Hammer", "Cultivator", "PickaxeAntler", "Feaster" };
         private static readonly List<CreativeLocationObjectCleanup> PendingLocationObjectCleanups = new();
         private static float _nextDeathRecoveryCheck;
 
@@ -123,7 +123,7 @@ namespace ValheimCreative.Features.Creative
                 return Lines("No active creative session.");
             }
 
-            return Lines($"Active creative session: {session.SlotId}.");
+            return Lines($"Active creative session: {session.SlotId}, radius={FormatRadius(session.ZoneRadius)}m, biome={session.CreativeBiome}.");
         }
 
         internal static IEnumerable<string> GetInvite(ZDO playerZdo)
@@ -356,6 +356,86 @@ namespace ValheimCreative.Features.Creative
             return Lines($"Creative zone {zone.SlotId} radius set to {FormatRadius(zone.Radius)}m.");
         }
 
+        internal static IEnumerable<string> GetOrSetCurrentCreativeZoneRadius(ZDO playerZdo, string rawRadius)
+        {
+            if (!IsServerReady())
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("Use !creative before changing creative zone size.");
+            }
+
+            if (string.IsNullOrWhiteSpace(rawRadius))
+            {
+                return Lines($"Creative zone radius: {FormatRadius(session.ZoneRadius)}m.");
+            }
+
+            if (session.OwnerPlayerId != playerId)
+            {
+                return Lines("Only the creative zone owner can change its size.");
+            }
+
+            if (!float.TryParse(rawRadius.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float radius) || radius <= 0f)
+            {
+                return Lines("Radius must be a positive number.");
+            }
+
+            ApplyRadiusToZone(session.OwnerPlayerId, radius);
+            Save();
+            ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {session.SlotId} radius to {FormatRadius(radius)}m from chat.");
+            return Lines($"Creative zone radius set to {FormatRadius(radius)}m.");
+        }
+
+        internal static IEnumerable<string> GetOrSetBlueprintLoadOffset(ZDO playerZdo, string rawArgument)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return Lines("Use !creative before changing blueprint offsets.");
+            }
+
+            if (session.OwnerPlayerId != playerId)
+            {
+                return Lines("Only the creative zone owner can change blueprint offsets.");
+            }
+
+            string[] parts = rawArgument.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                return Lines("Usage: !creative offset <blueprintName> [loadYOffset]");
+            }
+
+            if (parts.Length > 2)
+            {
+                return Lines("Usage: !creative offset <blueprintName> [loadYOffset]");
+            }
+
+            string blueprintName = parts[0];
+            if (parts.Length == 1)
+            {
+                return CreativeBlueprintService.TryGetBlueprintLoadYOffset(blueprintName, out float currentOffset, out string currentSafeName, out string getError)
+                    ? Lines($"{currentSafeName} loadYOffset={currentOffset.ToString("G9", CultureInfo.InvariantCulture)}.")
+                    : Lines(getError);
+            }
+
+            if (!float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float offset))
+            {
+                return Lines("loadYOffset must be a number.");
+            }
+
+            if (!CreativeBlueprintService.TrySetBlueprintLoadYOffset(blueprintName, offset, out string safeName, out string error))
+            {
+                return Lines(error);
+            }
+
+            ValheimCreativePlugin.ModLogger.LogInfo($"Set blueprint {safeName} loadYOffset to {offset.ToString("G9", CultureInfo.InvariantCulture)}.");
+            return Lines($"{safeName} loadYOffset set to {offset.ToString("G9", CultureInfo.InvariantCulture)}.");
+        }
+
         internal static void ApplyRadiusToActiveSlot(string slotId, float radius)
         {
             float normalizedRadius = Mathf.Max(1f, radius);
@@ -369,6 +449,19 @@ namespace ValheimCreative.Features.Creative
                 activeSession.ZoneRadius = normalizedRadius;
                 CreativeBiomeService.SendOverride(activeSession);
             }
+        }
+
+        internal static bool IsInsideCreativeZone(Vector3 point)
+        {
+            foreach (CreativeZone zone in ZonesByOwnerId.Values)
+            {
+                if (Utils.DistanceXZ(point, zone.Position) <= zone.Radius)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static IEnumerable<string> LoadBlueprint(ZDO playerZdo, string fileName)
@@ -456,7 +549,6 @@ namespace ValheimCreative.Features.Creative
             if (!CreativeBlueprintService.TrySaveBlueprint(
                     fileName,
                     session,
-                    playerId,
                     GetPlayerName(playerZdo, session.PlayerName),
                     session.CreativeBiome,
                     out int saved,
