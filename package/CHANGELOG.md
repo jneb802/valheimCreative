@@ -1,4 +1,4 @@
-# Unreleased
+# 0.2.8
 
 - Added automatic safe object migration when `CreativeZoneSpacing` changes, with JSON backups before applying moved zone/session positions.
 - Added `creative_zone_migrate_spacing <targetSpacing> [apply]` to preview or manually apply creative zone spacing migration.

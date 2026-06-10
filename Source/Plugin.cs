@@ -12,7 +12,7 @@ namespace ValheimCreative
     {
         internal const string ModGuid = "warpalicious.valheimCreative";
         internal const string ModName = "valheimCreative";
-        internal const string ModVersion = "0.2.7";
+        internal const string ModVersion = "0.2.8";
 
         private readonly Harmony _harmony = new(ModGuid);
 
