@@ -6,6 +6,7 @@ namespace ValheimCreative.Configuration
 {
     internal static class ModConfig
     {
+        private static ConfigFile? BoundConfig;
         internal static ConfigEntry<bool> EnableCreativeCommands = null!;
         internal static ConfigEntry<string> CreativeCommand = null!;
         internal static ConfigEntry<string> ReturnCommand = null!;
@@ -35,6 +36,8 @@ namespace ValheimCreative.Configuration
 
         internal static void Bind(ConfigFile config)
         {
+            BoundConfig = config;
+
             EnableCreativeCommands = config.Bind(
                 "Creative",
                 "EnableCreativeCommands",
@@ -74,8 +77,8 @@ namespace ValheimCreative.Configuration
             CreativeZoneSpacing = config.Bind(
                 "Creative",
                 "CreativeZoneSpacing",
-                192f,
-                "Distance between creative zone centers. Default is 3 * 64.");
+                1920f,
+                "Distance between creative zone centers. Default is 30 * 64.");
 
             SpawnCreativeLocation = config.Bind(
                 "Creative",
@@ -190,6 +193,11 @@ namespace ValheimCreative.Configuration
                 "DebugLogging",
                 false,
                 "Logs creative session decisions.");
+        }
+
+        internal static void Save()
+        {
+            BoundConfig?.Save();
         }
 
         internal static Vector3 CreativePositionValue => ParseVector3(CreativePosition.Value, new Vector3(0f, 45f, -13000f));

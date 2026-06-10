@@ -8,7 +8,7 @@ The server owns session state, zone allocation, location spawning, teleporting, 
 
 - `!creative`: starts a creative session, sends that player a targeted fake world-key list with creative build keys, then teleports them to their off-map build zone.
 - `!return`: sends the player the normal world-key list, teleports them back to their saved entry position, and ends the session.
-- Per-player zones: each owner gets a persistent creative zone allocation. Zone centers are spaced 192m apart by default.
+- Per-player zones: each owner gets a persistent creative zone allocation. Zone centers are spaced 1920m apart by default.
 - Invites: `!creative invite` shows the owner's invite code. `!creative join CODE` teleports another player to that owner's active zone.
 - Blueprint save includes all player-built pieces in the owner's creative radius, including pieces built by invited players.
 - `!creative size <radius>` lets a server admin change the active creative radius in game.
@@ -49,6 +49,20 @@ Install `valheimCreative.dll` on the dedicated server.
 !creative offset blueprintName -1.25 # admin only
 ```
 
+Server console migration command:
+
+```text
+creative_zone_migrate_spacing 1920       # dry run
+creative_zone_migrate_spacing 1920 apply # backs up JSON state, moves zone objects, saves new spacing
+```
+
+Changing `CreativeZoneSpacing` automatically migrates existing saved zones after
+the server object system is ready. Existing saved zones keep their stored
+positions during early startup, then the migration backs up JSON state, moves
+zone objects, updates saved zone/session positions, and saves the new spacing.
+Use the dry-run command before changing the config if you want to preview the
+movement.
+
 ## Blueprint Metadata
 
 Loaded blueprints are anchored by their bottom-center bounds. To adjust one
@@ -80,7 +94,7 @@ Packaged config templates live in `package/BepInEx/config/expand_world/`.
 
 - `expand_locations_valheim_creative.yaml`: disabled `StartTemple:valheim_creative` clone that removes the visible temple objects and levels/paints the terrain.
 - `expand_prefabs_valheim_creative.yaml`: placeholder runtime rules file.
-- `valheim_creative.cs`: placeholder Expand World Code file.
+- `valheim_creative.cs`: Expand World Code helpers used by the creative prefab data.
 - `valheim_creative_setup.txt`: command notes for spawning/registering the pad.
 
 ## Build

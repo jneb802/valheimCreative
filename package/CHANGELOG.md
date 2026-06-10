@@ -1,3 +1,10 @@
+# Unreleased
+
+- Added automatic safe object migration when `CreativeZoneSpacing` changes, with JSON backups before applying moved zone/session positions.
+- Added `creative_zone_migrate_spacing <targetSpacing> [apply]` to preview or manually apply creative zone spacing migration.
+- Increased the default creative zone spacing to 1920m.
+- Updated creative zone size changes to also refresh the packaged terrain modifier radius.
+
 # 0.2.7
 
 - Restricted `!creative size` and `!creative offset` to server admins.

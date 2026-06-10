@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using HarmonyLib;
 
@@ -10,6 +11,8 @@ namespace ValheimCreative.Features.Creative
         private const string BlueprintOffsetCommand = "creative_blueprint_offset";
         private const string ZoneSizesCommand = "creative_zone_sizes";
         private const string ZoneSizeCommand = "creative_zone_size";
+        private const string ZoneTerrainCommand = "creative_zone_terrain";
+        private const string ZoneMigrateSpacingCommand = "creative_zone_migrate_spacing";
         private const string SiegeListCommand = "creative_siege_list";
         private const string SiegeStatusCommand = "creative_siege_status";
         private const string SiegeSizeCommand = "creative_siege_size";
@@ -29,7 +32,9 @@ namespace ValheimCreative.Features.Creative
                 Terminal.commands.ContainsKey(LoadPlayerCommand) &&
                 Terminal.commands.ContainsKey(BlueprintOffsetCommand) &&
                 Terminal.commands.ContainsKey(SiegeEnterCommand) &&
-                Terminal.commands.ContainsKey(SiegeSizeCommand))
+                Terminal.commands.ContainsKey(SiegeSizeCommand) &&
+                Terminal.commands.ContainsKey(ZoneMigrateSpacingCommand) &&
+                Terminal.commands.ContainsKey(ZoneTerrainCommand))
             {
                 return;
             }
@@ -168,6 +173,74 @@ namespace ValheimCreative.Features.Creative
                     }
 
                     foreach (string line in CreativeSessionManager.GetOrSetCreativeZoneRadius(playerId, radius))
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                ZoneTerrainCommand,
+                "Show the terrain modifier radius for an allocated creative zone. Usage: creative_zone_terrain <ownerPlayerIdOrPlatformId>",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 2)
+                    {
+                        args.Context.AddString("Usage: creative_zone_terrain <ownerPlayerIdOrPlatformId>");
+                        return;
+                    }
+
+                    if (!args.TryParameterLong(1, out long playerId) || playerId == 0L)
+                    {
+                        args.Context.AddString("ownerPlayerIdOrPlatformId must be a non-zero number.");
+                        return;
+                    }
+
+                    foreach (string line in CreativeSessionManager.GetCreativeTerrainModifierStatus(playerId))
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                ZoneMigrateSpacingCommand,
+                "Plan or apply a creative zone spacing migration. Usage: creative_zone_migrate_spacing <targetSpacing> [apply]",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 2 || args.Length > 3)
+                    {
+                        args.Context.AddString("Usage: creative_zone_migrate_spacing <targetSpacing> [apply]");
+                        return;
+                    }
+
+                    if (!float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float targetSpacing) || targetSpacing <= 0f)
+                    {
+                        args.Context.AddString("targetSpacing must be a positive number.");
+                        return;
+                    }
+
+                    bool apply = false;
+                    if (args.Length == 3)
+                    {
+                        if (!args[2].Equals("apply", StringComparison.OrdinalIgnoreCase))
+                        {
+                            args.Context.AddString("Usage: creative_zone_migrate_spacing <targetSpacing> [apply]");
+                            return;
+                        }
+
+                        apply = true;
+                    }
+
+                    foreach (string line in CreativeSessionManager.MigrateCreativeZoneSpacing(targetSpacing, apply))
                     {
                         args.Context.AddString(line);
                     }

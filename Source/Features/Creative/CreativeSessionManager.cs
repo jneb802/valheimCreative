@@ -15,8 +15,14 @@ namespace ValheimCreative.Features.Creative
         private static readonly Dictionary<long, CreativeZone> ZonesByOwnerId = new();
         private const float CreativeLocationProxyCleanupRadius = 80f;
         private const float CreativeLocationObjectCleanupRadius = 80f;
+        private const float CreativeTerrainModifierCleanupRadius = 8f;
         private const float CreativeLocationObjectCleanupRetrySeconds = 1f;
         private const float CreativeLocationObjectCleanupDurationSeconds = 8f;
+        private const float ZoneMigrationPositionTolerance = 0.1f;
+        private const string CreativeTerrainModifierPrefab = "digg_v2";
+        private const string TerrainModifierComponentName = "TerrainModifier";
+        private const string ZdoHasFields = "HasFields";
+        private const string TerrainModifierHasFields = "HasFieldsTerrainModifier";
         private static readonly string[] CreativeLocationObjectCleanupPrefabs =
         {
             "BossStone_TheQueen",
@@ -33,6 +39,7 @@ namespace ValheimCreative.Features.Creative
         private static readonly string[] CreativeToolPrefabs = { "Hoe", "Hammer", "Cultivator", "PickaxeAntler", "Feaster" };
         private static readonly List<CreativeLocationObjectCleanup> PendingLocationObjectCleanups = new();
         private static float _nextDeathRecoveryCheck;
+        private static bool _autoSpacingMigrationChecked;
 
         internal static IEnumerable<string> EnterCreative(long peerId, ZDO playerZdo, string fallbackName)
         {
@@ -351,6 +358,7 @@ namespace ValheimCreative.Features.Creative
 
             zone.Radius = Mathf.Max(1f, radius.Value);
             ApplyRadiusToZone(zone.OwnerPlayerId, zone.Radius);
+            TryRefreshCreativeTerrainModifier(zone, out _);
             Save();
             ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {zone.SlotId} radius to {FormatRadius(zone.Radius)}m.");
             return Lines($"Creative zone {zone.SlotId} radius set to {FormatRadius(zone.Radius)}m.");
@@ -385,6 +393,10 @@ namespace ValheimCreative.Features.Creative
             }
 
             ApplyRadiusToZone(session.OwnerPlayerId, radius);
+            if (ZonesByOwnerId.TryGetValue(session.OwnerPlayerId, out CreativeZone zone))
+            {
+                TryRefreshCreativeTerrainModifier(zone, out _);
+            }
             Save();
             ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {session.SlotId} radius to {FormatRadius(radius)}m from chat.");
             return Lines($"Creative zone radius set to {FormatRadius(radius)}m.");
@@ -462,6 +474,135 @@ namespace ValheimCreative.Features.Creative
             }
 
             return false;
+        }
+
+        internal static IEnumerable<string> MigrateCreativeZoneSpacing(float targetSpacing, bool apply)
+        {
+            if (!IsServerReady() || ZDOMan.instance == null)
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            float normalizedSpacing = Mathf.Max(64f, targetSpacing);
+            List<CreativeZone> oldZones = ZonesByOwnerId.Values
+                .OrderBy(zone => zone.SlotIndex)
+                .ToList();
+            List<CreativeZoneMigration> migrations = new();
+
+            foreach (CreativeZone zone in oldZones)
+            {
+                Vector3 targetPosition = GetZonePosition(zone.SlotIndex, normalizedSpacing);
+                if (Utils.DistanceXZ(zone.Position, targetPosition) <= ZoneMigrationPositionTolerance)
+                {
+                    continue;
+                }
+
+                List<ZDO> objects = FindCreativeZoneMigrationZdos(zone, oldZones, out int skippedOverlap);
+                migrations.Add(new CreativeZoneMigration(zone, zone.Position, targetPosition, objects, skippedOverlap));
+            }
+
+            if (migrations.Count == 0)
+            {
+                return Lines($"No creative zones need migration for spacing {FormatRadius(normalizedSpacing)}m.");
+            }
+
+            List<string> lines = new();
+            int totalObjects = migrations.Sum(migration => migration.Objects.Count);
+            int totalSkipped = migrations.Sum(migration => migration.SkippedOverlap);
+            lines.Add(apply
+                ? $"Applying creative zone spacing migration to {FormatRadius(normalizedSpacing)}m."
+                : $"Dry run: creative zone spacing migration to {FormatRadius(normalizedSpacing)}m. Run again with apply to move objects.");
+
+            foreach (CreativeZoneMigration migration in migrations)
+            {
+                lines.Add(
+                    $"{migration.Zone.SlotId}: {Format(migration.OldPosition)} -> {Format(migration.NewPosition)}, " +
+                    $"move {migration.Objects.Count} object(s), skip {migration.SkippedOverlap} overlapping object(s).");
+            }
+
+            lines.Add($"Total: move {totalObjects} object(s), skip {totalSkipped} overlapping object(s).");
+            if (!apply)
+            {
+                return lines;
+            }
+
+            string zoneBackup = BackupJsonFile(GetZonePath());
+            string sessionBackup = BackupJsonFile(GetSessionPath());
+            foreach (CreativeZoneMigration migration in migrations)
+            {
+                MoveCreativeLocationInstance(migration.OldPosition, migration.NewPosition, migration.Zone.SlotId);
+                MoveCreativeZoneObjects(migration);
+                ZonesByOwnerId[migration.Zone.OwnerPlayerId] = new CreativeZone(
+                    migration.Zone.OwnerPlayerId,
+                    migration.Zone.OwnerPlayerName,
+                    migration.Zone.SlotIndex,
+                    BuildZoneSlotId(migration.Zone.SlotIndex),
+                    migration.NewPosition,
+                    migration.Zone.Biome,
+                    migration.Zone.Radius);
+            }
+
+            ModConfig.CreativeZoneSpacing.Value = normalizedSpacing;
+            ModConfig.Save();
+            ReconcileCreativeState();
+            Save();
+
+            foreach (CreativeZoneMigration migration in migrations)
+            {
+                if (!ZonesByOwnerId.TryGetValue(migration.Zone.OwnerPlayerId, out CreativeZone migratedZone))
+                {
+                    continue;
+                }
+
+                if (!TryApplyCreativeTerrainModifierRadius(migratedZone.Position, migratedZone.SlotId, migratedZone.Radius, out _))
+                {
+                    TryRefreshCreativeTerrainModifier(migratedZone, out _);
+                }
+            }
+
+            foreach (CreativeSession session in SessionsByPlayerId.Values)
+            {
+                CreativeBiomeService.SendOverride(session);
+            }
+
+            foreach (CreativeZoneMigration migration in migrations)
+            {
+                PokeCreativeHeightmaps(migration.OldPosition, migration.Zone.Radius);
+                PokeCreativeHeightmaps(migration.NewPosition, migration.Zone.Radius);
+            }
+
+            ZNet.instance.Save(false, false, true);
+            lines.Add($"Backed up zones to {zoneBackup}.");
+            lines.Add($"Backed up sessions to {sessionBackup}.");
+            lines.Add($"CreativeZoneSpacing is now {FormatRadius(normalizedSpacing)}m.");
+            return lines;
+        }
+
+        private static void TryAutoMigrateCreativeZoneSpacing()
+        {
+            if (_autoSpacingMigrationChecked)
+            {
+                return;
+            }
+
+            if (ZDOMan.instance == null)
+            {
+                return;
+            }
+
+            _autoSpacingMigrationChecked = true;
+            float configuredSpacing = Mathf.Max(64f, ModConfig.CreativeZoneSpacing.Value);
+            bool needsMigration = ZonesByOwnerId.Values.Any(zone =>
+                Utils.DistanceXZ(zone.Position, GetZonePosition(zone.SlotIndex, configuredSpacing)) > ZoneMigrationPositionTolerance);
+            if (!needsMigration)
+            {
+                return;
+            }
+
+            foreach (string line in MigrateCreativeZoneSpacing(configuredSpacing, apply: true))
+            {
+                ValheimCreativePlugin.ModLogger.LogInfo("[Creative zone spacing migration] " + line);
+            }
         }
 
         internal static IEnumerable<string> LoadBlueprint(ZDO playerZdo, string fileName)
@@ -569,6 +710,7 @@ namespace ValheimCreative.Features.Creative
                 return;
             }
 
+            TryAutoMigrateCreativeZoneSpacing();
             RunPendingLocationObjectCleanups();
 
             if (SessionsByPlayerId.Count == 0 || Time.time < _nextDeathRecoveryCheck)
@@ -715,6 +857,7 @@ namespace ValheimCreative.Features.Creative
             }
 
             ReconcileCreativeState();
+            _autoSpacingMigrationChecked = false;
             LogDebug($"Loaded {SessionsByPlayerId.Count} creative session(s).");
             Save();
         }
@@ -813,6 +956,27 @@ namespace ValheimCreative.Features.Creative
             }
         }
 
+        internal static float GetTerrainModifierRadiusAtPosition(Vector3 position)
+        {
+            CreativeZone? closestZone = null;
+            float closestDistance = float.MaxValue;
+            foreach (CreativeZone zone in ZonesByOwnerId.Values)
+            {
+                float distance = Utils.DistanceXZ(zone.Position, position);
+                if (distance >= closestDistance)
+                {
+                    continue;
+                }
+
+                closestZone = zone;
+                closestDistance = distance;
+            }
+
+            return closestZone != null && closestDistance <= Mathf.Max(1f, closestZone.Radius)
+                ? Mathf.Max(1f, closestZone.Radius)
+                : ModConfig.DefaultCreativeZoneRadiusValue;
+        }
+
         private static void ReconcileCreativeState()
         {
             foreach (CreativeZone zone in ZonesByOwnerId.Values.ToList())
@@ -822,7 +986,7 @@ namespace ValheimCreative.Features.Creative
                     zone.OwnerPlayerName,
                     zone.SlotIndex,
                     BuildZoneSlotId(zone.SlotIndex),
-                    GetZonePosition(zone.SlotIndex),
+                    zone.Position,
                     zone.Biome,
                     zone.Radius);
             }
@@ -864,6 +1028,13 @@ namespace ValheimCreative.Features.Creative
             return zone != null;
         }
 
+        private static bool TryGetZoneBySlotId(string slotId, out CreativeZone? zone)
+        {
+            zone = ZonesByOwnerId.Values.FirstOrDefault(existing =>
+                existing.SlotId.Equals(slotId, StringComparison.Ordinal));
+            return zone != null;
+        }
+
         private static int GetNextZoneSlotIndex()
         {
             HashSet<int> usedSlots = ZonesByOwnerId.Values.Select(zone => zone.SlotIndex).ToHashSet();
@@ -878,9 +1049,14 @@ namespace ValheimCreative.Features.Creative
 
         private static Vector3 GetZonePosition(int slotIndex)
         {
+            return GetZonePosition(slotIndex, ModConfig.CreativeZoneSpacing.Value);
+        }
+
+        private static Vector3 GetZonePosition(int slotIndex, float spacing)
+        {
             Vector3 origin = ModConfig.CreativePositionValue;
-            float spacing = Mathf.Max(64f, ModConfig.CreativeZoneSpacing.Value);
-            return origin + new Vector3(slotIndex * spacing, 0f, 0f);
+            float normalizedSpacing = Mathf.Max(64f, spacing);
+            return origin + new Vector3(slotIndex * normalizedSpacing, 0f, 0f);
         }
 
         private static string BuildZoneSlotId(int slotIndex)
@@ -1022,6 +1198,11 @@ namespace ValheimCreative.Features.Creative
 
         internal static bool TryEnsureCreativeLocation(Vector3 position, string slotId, out string error)
         {
+            return TryEnsureCreativeLocation(position, slotId, false, out error);
+        }
+
+        private static bool TryEnsureCreativeLocation(Vector3 position, string slotId, bool forceRespawn, out string error)
+        {
             error = string.Empty;
             if (!ModConfig.SpawnCreativeLocation.Value)
             {
@@ -1048,10 +1229,13 @@ namespace ValheimCreative.Features.Creative
             }
 
             Vector2i zone = ZoneSystem.GetZone(position);
-            if (zoneSystem.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance instance) &&
+            bool hasPlacedCreativeLocation =
+                zoneSystem.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance instance) &&
                 instance.m_placed &&
                 instance.m_location != null &&
-                instance.m_location.m_prefab.Name.Equals(locationName, StringComparison.Ordinal))
+                instance.m_location.m_prefab.Name.Equals(locationName, StringComparison.Ordinal);
+
+            if (hasPlacedCreativeLocation && !forceRespawn)
             {
                 DestroyCreativeLocationProxies(position, locationName, slotId);
                 ScheduleCreativeLocationObjectCleanup(position, slotId);
@@ -1064,6 +1248,16 @@ namespace ValheimCreative.Features.Creative
                 error = $"Creative location {locationName} is not loaded. Check Expand World Data config and restart the server.";
                 ValheimCreativePlugin.ModLogger.LogWarning(error);
                 return false;
+            }
+
+            if (forceRespawn)
+            {
+                DestroyCreativeTerrainModifiers(position, slotId);
+                DestroyCreativeLocationProxies(position, locationName, slotId);
+                if (hasPlacedCreativeLocation)
+                {
+                    zoneSystem.m_locationInstances.Remove(zone);
+                }
             }
 
             try
@@ -1085,6 +1279,11 @@ namespace ValheimCreative.Features.Creative
                 };
 
                 ValheimCreativePlugin.ModLogger.LogInfo($"Spawned creative location {locationName} at {Format(position)} in zone {zone}.");
+                if (TryGetZoneBySlotId(slotId, out CreativeZone? creativeZone) && creativeZone != null)
+                {
+                    TryApplyCreativeTerrainModifierRadius(creativeZone.Position, creativeZone.SlotId, creativeZone.Radius, out _);
+                }
+
                 DestroyCreativeLocationProxies(position, locationName, slotId);
                 ScheduleCreativeLocationObjectCleanup(position, slotId);
                 RunCreativeLocationObjectCleanup(position, slotId);
@@ -1096,6 +1295,347 @@ namespace ValheimCreative.Features.Creative
                 ValheimCreativePlugin.ModLogger.LogWarning($"{error} {ex}");
                 return false;
             }
+        }
+
+        private static bool TryRefreshCreativeTerrainModifier(CreativeZone zone, out string error)
+        {
+            if (!TryEnsureCreativeLocation(zone.Position, zone.SlotId, true, out error))
+            {
+                ValheimCreativePlugin.ModLogger.LogWarning(
+                    $"Creative zone {zone.SlotId} terrain modifier refresh failed after radius change: {error}");
+                return false;
+            }
+
+            if (!TryApplyCreativeTerrainModifierRadius(zone.Position, zone.SlotId, zone.Radius, out error))
+            {
+                ValheimCreativePlugin.ModLogger.LogWarning(
+                    $"Creative zone {zone.SlotId} terrain modifier radius refresh failed after location respawn: {error}");
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static IEnumerable<string> GetCreativeTerrainModifierStatus(long ownerPlayerId)
+        {
+            if (!IsServerReady() || ZDOMan.instance == null)
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            if (!TryResolveCreativeZoneOwnerId(ownerPlayerId, out long resolvedOwnerId) ||
+                !ZonesByOwnerId.TryGetValue(resolvedOwnerId, out CreativeZone zone))
+            {
+                return Lines($"Creative zone was not found for player {ownerPlayerId}.");
+            }
+
+            List<ZDO> modifiers = FindCreativeTerrainModifierZdos(zone.Position);
+            if (modifiers.Count == 0)
+            {
+                return Lines($"No {CreativeTerrainModifierPrefab} terrain modifier found near {zone.SlotId}.");
+            }
+
+            return modifiers
+                .OrderBy(zdo => Utils.DistanceXZ(zdo.GetPosition(), zone.Position))
+                .Select(zdo => FormatCreativeTerrainModifierStatus(zone, zdo));
+        }
+
+        private static bool TryApplyCreativeTerrainModifierRadius(Vector3 position, string slotId, float radius, out string error)
+        {
+            error = string.Empty;
+            if (ZDOMan.instance == null)
+            {
+                error = "Server object system is not ready yet.";
+                return false;
+            }
+
+            List<ZDO> modifiers = FindCreativeTerrainModifierZdos(position);
+            if (modifiers.Count == 0)
+            {
+                error = $"No {CreativeTerrainModifierPrefab} terrain modifier found near creative zone {slotId}.";
+                return false;
+            }
+
+            float normalizedRadius = Mathf.Max(1f, radius);
+            int updated = 0;
+            foreach (ZDO zdo in modifiers)
+            {
+                if (!zdo.IsOwner())
+                {
+                    zdo.SetOwner(ZDOMan.GetSessionID());
+                }
+
+                ApplyTerrainModifierFields(zdo, normalizedRadius);
+                ZNetView? netView = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(zdo) : null;
+                TerrainModifier? terrainModifier = netView != null ? netView.GetComponent<TerrainModifier>() : null;
+                if (terrainModifier != null)
+                {
+                    ApplyTerrainModifierFields(terrainModifier, normalizedRadius);
+                    PokeCreativeHeightmaps(terrainModifier);
+                }
+
+                updated++;
+            }
+
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Updated {updated} creative terrain modifier object(s) in {slotId} to radius {FormatRadius(normalizedRadius)}m.");
+            return true;
+        }
+
+        private static List<ZDO> FindCreativeTerrainModifierZdos(Vector3 position)
+        {
+            List<ZDO> matches = new();
+            List<ZDO> objects = new();
+            int index = 0;
+            while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative(CreativeTerrainModifierPrefab, objects, ref index))
+            {
+            }
+
+            foreach (ZDO zdo in objects)
+            {
+                if (zdo == null ||
+                    !zdo.IsValid() ||
+                    Utils.DistanceXZ(zdo.GetPosition(), position) > CreativeTerrainModifierCleanupRadius)
+                {
+                    continue;
+                }
+
+                matches.Add(zdo);
+            }
+
+            return matches;
+        }
+
+        private static void ApplyTerrainModifierFields(ZDO zdo, float radius)
+        {
+            zdo.Set(ZdoHasFields, true);
+            zdo.Set(TerrainModifierHasFields, true);
+            zdo.Set($"{TerrainModifierComponentName}.m_level", true);
+            zdo.Set($"{TerrainModifierComponentName}.m_square", false);
+            zdo.Set($"{TerrainModifierComponentName}.m_smooth", true);
+            zdo.Set($"{TerrainModifierComponentName}.m_paintCleared", false);
+            zdo.Set($"{TerrainModifierComponentName}.m_useTerrainCompiler", false);
+            zdo.Set($"{TerrainModifierComponentName}.m_playerModifiction", false);
+            zdo.Set($"{TerrainModifierComponentName}.m_levelOffset", 0f);
+            zdo.Set($"{TerrainModifierComponentName}.m_levelRadius", radius);
+            zdo.Set($"{TerrainModifierComponentName}.m_smoothRadius", radius);
+            zdo.Set($"{TerrainModifierComponentName}.m_paintRadius", radius);
+            zdo.Set($"{TerrainModifierComponentName}.m_smoothPower", 4f);
+        }
+
+        private static void ApplyTerrainModifierFields(TerrainModifier terrainModifier, float radius)
+        {
+            terrainModifier.m_level = true;
+            terrainModifier.m_square = false;
+            terrainModifier.m_smooth = true;
+            terrainModifier.m_paintCleared = false;
+            terrainModifier.m_useTerrainCompiler = false;
+            terrainModifier.m_playerModifiction = false;
+            terrainModifier.m_levelOffset = 0f;
+            terrainModifier.m_levelRadius = radius;
+            terrainModifier.m_smoothRadius = radius;
+            terrainModifier.m_paintRadius = radius;
+            terrainModifier.m_smoothPower = 4f;
+        }
+
+        private static void PokeCreativeHeightmaps(TerrainModifier terrainModifier)
+        {
+            foreach (Heightmap heightmap in Heightmap.GetAllHeightmaps())
+            {
+                if (heightmap != null && heightmap.TerrainVSModifier(terrainModifier))
+                {
+                    heightmap.Poke(false);
+                }
+            }
+
+            if (ClutterSystem.instance != null)
+            {
+                ClutterSystem.instance.ResetGrass(terrainModifier.transform.position, terrainModifier.GetRadius());
+            }
+        }
+
+        private static string FormatCreativeTerrainModifierStatus(CreativeZone zone, ZDO zdo)
+        {
+            float distance = Utils.DistanceXZ(zdo.GetPosition(), zone.Position);
+            bool hasFields = zdo.GetBool(ZdoHasFields);
+            bool hasTerrainFields = zdo.GetBool(TerrainModifierHasFields);
+            float zdoLevelRadius = zdo.GetFloat($"{TerrainModifierComponentName}.m_levelRadius");
+            float zdoSmoothRadius = zdo.GetFloat($"{TerrainModifierComponentName}.m_smoothRadius");
+            ZNetView? netView = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(zdo) : null;
+            TerrainModifier? terrainModifier = netView != null ? netView.GetComponent<TerrainModifier>() : null;
+            string liveStatus = terrainModifier != null
+                ? $"live level={FormatRadius(terrainModifier.m_levelRadius)}m smooth={FormatRadius(terrainModifier.m_smoothRadius)}m radius={FormatRadius(terrainModifier.GetRadius())}m"
+                : "live not instantiated on server";
+
+            return $"{zone.SlotId} modifier={zdo.m_uid} distance={distance.ToString("0.##", CultureInfo.InvariantCulture)}m " +
+                   $"zdo hasFields={hasFields} hasTerrainFields={hasTerrainFields} " +
+                   $"level={FormatRadius(zdoLevelRadius)}m smooth={FormatRadius(zdoSmoothRadius)}m {liveStatus}";
+        }
+
+        private static List<ZDO> FindCreativeZoneMigrationZdos(CreativeZone zone, List<CreativeZone> oldZones, out int skippedOverlap)
+        {
+            List<ZDO> matches = new();
+            List<ZDO> objects = new();
+            float maxDistance = Mathf.Max(1f, zone.Radius);
+            int sectorArea = Mathf.CeilToInt(maxDistance / ZoneSystem.c_ZoneSize) + 1;
+            ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(zone.Position), sectorArea, 0, objects);
+            skippedOverlap = 0;
+
+            foreach (ZDO zdo in objects.Distinct())
+            {
+                if (zdo == null ||
+                    !zdo.IsValid() ||
+                    IsPlayerZdo(zdo) ||
+                    Utils.DistanceXZ(zdo.GetPosition(), zone.Position) > maxDistance)
+                {
+                    continue;
+                }
+
+                if (!BelongsToMigrationZone(zdo.GetPosition(), zone, oldZones))
+                {
+                    skippedOverlap++;
+                    continue;
+                }
+
+                matches.Add(zdo);
+            }
+
+            return matches;
+        }
+
+        private static bool BelongsToMigrationZone(Vector3 position, CreativeZone zone, List<CreativeZone> oldZones)
+        {
+            CreativeZone? closestZone = null;
+            float closestDistance = float.MaxValue;
+            bool ambiguous = false;
+
+            foreach (CreativeZone candidate in oldZones)
+            {
+                float distance = Utils.DistanceXZ(position, candidate.Position);
+                if (distance > Mathf.Max(1f, candidate.Radius))
+                {
+                    continue;
+                }
+
+                if (distance < closestDistance - ZoneMigrationPositionTolerance)
+                {
+                    closestZone = candidate;
+                    closestDistance = distance;
+                    ambiguous = false;
+                    continue;
+                }
+
+                if (Mathf.Abs(distance - closestDistance) <= ZoneMigrationPositionTolerance)
+                {
+                    ambiguous = true;
+                }
+            }
+
+            return !ambiguous &&
+                   closestZone != null &&
+                   closestZone.OwnerPlayerId == zone.OwnerPlayerId;
+        }
+
+        private static void MoveCreativeZoneObjects(CreativeZoneMigration migration)
+        {
+            Vector3 delta = migration.NewPosition - migration.OldPosition;
+            foreach (ZDO zdo in migration.Objects)
+            {
+                if (zdo == null || !zdo.IsValid())
+                {
+                    continue;
+                }
+
+                if (!zdo.IsOwner())
+                {
+                    zdo.SetOwner(ZDOMan.GetSessionID());
+                }
+
+                Vector3 oldPosition = zdo.GetPosition();
+                Vector3 newPosition = oldPosition + delta;
+                ZNetView? netView = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(zdo) : null;
+                zdo.SetPosition(newPosition);
+                if (netView != null)
+                {
+                    netView.transform.position = newPosition;
+                }
+            }
+        }
+
+        private static void MoveCreativeLocationInstance(Vector3 oldPosition, Vector3 newPosition, string slotId)
+        {
+            if (ZoneSystem.instance == null)
+            {
+                return;
+            }
+
+            Vector2i oldZone = ZoneSystem.GetZone(oldPosition);
+            Vector2i newZone = ZoneSystem.GetZone(newPosition);
+            if (oldZone == newZone ||
+                !ZoneSystem.instance.m_locationInstances.TryGetValue(oldZone, out ZoneSystem.LocationInstance instance))
+            {
+                return;
+            }
+
+            string locationName = ModConfig.CreativeLocationPrefab.Value.Trim();
+            if (instance.m_location == null ||
+                instance.m_location.m_prefab == null ||
+                !instance.m_location.m_prefab.Name.Equals(locationName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (ZoneSystem.instance.m_locationInstances.TryGetValue(newZone, out ZoneSystem.LocationInstance existing) &&
+                existing.m_location != null &&
+                existing.m_location.m_prefab != null &&
+                !existing.m_location.m_prefab.Name.Equals(locationName, StringComparison.Ordinal))
+            {
+                ValheimCreativePlugin.ModLogger.LogWarning(
+                    $"Not moving creative location instance for {slotId}: target zone {newZone} already has {existing.m_location.m_prefab.Name}.");
+                return;
+            }
+
+            ZoneSystem.instance.m_locationInstances.Remove(oldZone);
+            instance.m_position = newPosition;
+            ZoneSystem.instance.m_locationInstances[newZone] = instance;
+        }
+
+        private static void PokeCreativeHeightmaps(Vector3 center, float radius)
+        {
+            foreach (Heightmap heightmap in Heightmap.GetAllHeightmaps())
+            {
+                if (heightmap != null && HeightmapIntersects(heightmap, center, radius))
+                {
+                    heightmap.Poke(false);
+                }
+            }
+
+            if (ClutterSystem.instance != null)
+            {
+                ClutterSystem.instance.ResetGrass(center, radius);
+            }
+        }
+
+        private static bool HeightmapIntersects(Heightmap heightmap, Vector3 center, float radius)
+        {
+            float halfSize = heightmap.m_width * heightmap.m_scale * 0.5f;
+            Vector3 heightmapCenter = heightmap.transform.position;
+            float dx = Mathf.Max(Mathf.Abs(heightmapCenter.x - center.x) - halfSize, 0f);
+            float dz = Mathf.Max(Mathf.Abs(heightmapCenter.z - center.z) - halfSize, 0f);
+            float expandedRadius = Mathf.Max(1f, radius) + 4f;
+            return dx * dx + dz * dz <= expandedRadius * expandedRadius;
+        }
+
+        private static string BackupJsonFile(string path)
+        {
+            if (!File.Exists(path))
+            {
+                return $"missing:{path}";
+            }
+
+            string backupPath = path + ".bak-zone-migration-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture);
+            File.Copy(path, backupPath, overwrite: false);
+            return backupPath;
         }
 
         private static void DestroyCreativeLocationProxies(Vector3 position, string locationName, string slotId)
@@ -1140,6 +1680,43 @@ namespace ValheimCreative.Features.Creative
             if (removed > 0)
             {
                 ValheimCreativePlugin.ModLogger.LogInfo($"Removed {removed} creative location proxy object(s) from creative zone {slotId}.");
+            }
+        }
+
+        private static void DestroyCreativeTerrainModifiers(Vector3 position, string slotId)
+        {
+            if (ZDOMan.instance == null)
+            {
+                return;
+            }
+
+            int removed = 0;
+            List<ZDO> objects = new();
+            int index = 0;
+            while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative(CreativeTerrainModifierPrefab, objects, ref index))
+            {
+            }
+
+            foreach (ZDO zdo in objects)
+            {
+                if (zdo == null ||
+                    Utils.DistanceXZ(zdo.GetPosition(), position) > CreativeTerrainModifierCleanupRadius)
+                {
+                    continue;
+                }
+
+                if (!zdo.IsOwner())
+                {
+                    zdo.SetOwner(ZDOMan.GetSessionID());
+                }
+
+                ZDOMan.instance.DestroyZDO(zdo);
+                removed++;
+            }
+
+            if (removed > 0)
+            {
+                ValheimCreativePlugin.ModLogger.LogInfo($"Removed {removed} creative terrain modifier object(s) from creative zone {slotId}.");
             }
         }
 
@@ -1402,6 +1979,29 @@ namespace ValheimCreative.Features.Creative
             internal string SlotId { get; }
             internal float Until { get; }
             internal float NextRun { get; set; }
+        }
+
+        private sealed class CreativeZoneMigration
+        {
+            internal CreativeZoneMigration(
+                CreativeZone zone,
+                Vector3 oldPosition,
+                Vector3 newPosition,
+                List<ZDO> objects,
+                int skippedOverlap)
+            {
+                Zone = zone;
+                OldPosition = oldPosition;
+                NewPosition = newPosition;
+                Objects = objects;
+                SkippedOverlap = skippedOverlap;
+            }
+
+            internal CreativeZone Zone { get; }
+            internal Vector3 OldPosition { get; }
+            internal Vector3 NewPosition { get; }
+            internal List<ZDO> Objects { get; }
+            internal int SkippedOverlap { get; }
         }
     }
 }
