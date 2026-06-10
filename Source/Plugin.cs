@@ -36,6 +36,7 @@ namespace ValheimCreative
             CreativeInventoryGate.Update();
             CreativeSiegePortalRpc.RegisterRoutedRpcHandler();
             CreativeSessionManager.Update();
+            CreativeCommandZoneGuard.Update();
         }
 
         private void OnDestroy()

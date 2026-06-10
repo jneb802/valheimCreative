@@ -12,6 +12,41 @@ namespace ValheimCreative.Features.Creative
         internal const string StateRpcName = "PraetorisClient_CreativeCommandZoneState";
         internal const int ProtocolVersion = 1;
         internal const string DeniedMessage = "Creative commands can only be used inside your creative zone.";
+        private const float PolicySyncSeconds = 5f;
+        private static float _nextPolicySync;
+
+        internal static void Update()
+        {
+            if (ZNet.instance == null || !ZNet.instance.IsServer() || ZDOMan.instance == null || Time.time < _nextPolicySync)
+            {
+                return;
+            }
+
+            _nextPolicySync = Time.time + PolicySyncSeconds;
+            foreach (ZNetPeer peer in ZNet.instance.m_peers)
+            {
+                if (peer == null || !peer.IsReady() || peer.m_characterID.IsNone())
+                {
+                    continue;
+                }
+
+                ZDO playerZdo = ZDOMan.instance.GetZDO(peer.m_characterID);
+                if (playerZdo == null)
+                {
+                    continue;
+                }
+
+                CreativeSession? session = CreativeSessionManager.GetSession(CreativeSessionManager.GetPlayerId(playerZdo));
+                if (session == null)
+                {
+                    SendState(peer.m_uid, enabled: false, Vector3.zero, 0f, 0L, CreativeSessionManager.GetPlayerId(playerZdo), string.Empty);
+                    continue;
+                }
+
+                session.PeerId = CreativeSessionManager.ResolvePeerId(playerZdo, session.PeerId);
+                SendState(session);
+            }
+        }
 
         internal static bool IsProtectedCommand(string rawCommand)
         {
@@ -76,6 +111,8 @@ namespace ValheimCreative.Features.Creative
             package.Write(ownerPlayerId);
             package.Write(playerId);
             package.Write(slotId ?? string.Empty);
+            package.Write(ModConfig.EnableCreativeCommandZoneGuard.Value);
+            package.Write(ModConfig.CreativeCommandZoneProtectedCommands.Value ?? string.Empty);
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, StateRpcName, package);
         }
 
