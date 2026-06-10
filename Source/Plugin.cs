@@ -21,6 +21,7 @@ namespace ValheimCreative
         public void Awake()
         {
             ModConfig.Bind(Config);
+            CreativeCommandZoneGuard.Initialize();
             CreativeInventoryGate.RegisterRoutedRpcHandler();
             CreativeSiegePortalRpc.RegisterRoutedRpcHandler();
             CreativeConsoleCommands.Register();

@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using HarmonyLib;
 using UnityEngine;
-using ValheimCreative.Configuration;
 
 namespace ValheimCreative.Features.Creative
 {
@@ -12,17 +10,34 @@ namespace ValheimCreative.Features.Creative
         internal const string StateRpcName = "PraetorisClient_CreativeCommandZoneState";
         internal const int ProtocolVersion = 1;
         internal const string DeniedMessage = "Creative commands can only be used inside your creative zone.";
-        private const float PolicySyncSeconds = 5f;
-        private static float _nextPolicySync;
+        private static readonly Dictionary<long, string> SentPolicyByPeerId = new();
+
+        internal static void Initialize()
+        {
+            CreativeCommandGuardPolicy.Initialize();
+            SentPolicyByPeerId.Clear();
+        }
 
         internal static void Update()
         {
-            if (ZNet.instance == null || !ZNet.instance.IsServer() || ZDOMan.instance == null || Time.time < _nextPolicySync)
+            if (ZNet.instance == null || !ZNet.instance.IsServer() || ZDOMan.instance == null)
             {
                 return;
             }
 
-            _nextPolicySync = Time.time + PolicySyncSeconds;
+            bool policyChanged = CreativeCommandGuardPolicy.Update();
+            if (policyChanged)
+            {
+                SentPolicyByPeerId.Clear();
+            }
+
+            SyncPolicyToReadyPeers();
+        }
+
+        private static void SyncPolicyToReadyPeers()
+        {
+            PruneDisconnectedPeers();
+
             foreach (ZNetPeer peer in ZNet.instance.m_peers)
             {
                 if (peer == null || !peer.IsReady() || peer.m_characterID.IsNone())
@@ -36,10 +51,17 @@ namespace ValheimCreative.Features.Creative
                     continue;
                 }
 
-                CreativeSession? session = CreativeSessionManager.GetSession(CreativeSessionManager.GetPlayerId(playerZdo));
+                if (SentPolicyByPeerId.TryGetValue(peer.m_uid, out string policyKey) &&
+                    policyKey == CreativeCommandGuardPolicy.PolicyKey)
+                {
+                    continue;
+                }
+
+                long playerId = CreativeSessionManager.GetPlayerId(playerZdo);
+                CreativeSession? session = CreativeSessionManager.GetSession(playerId);
                 if (session == null)
                 {
-                    SendState(peer.m_uid, enabled: false, Vector3.zero, 0f, 0L, CreativeSessionManager.GetPlayerId(playerZdo), string.Empty);
+                    SendState(peer.m_uid, enabled: false, Vector3.zero, 0f, 0L, playerId, string.Empty);
                     continue;
                 }
 
@@ -50,26 +72,8 @@ namespace ValheimCreative.Features.Creative
 
         internal static bool IsProtectedCommand(string rawCommand)
         {
-            if (!ModConfig.EnableCreativeCommandZoneGuard.Value)
-            {
-                return false;
-            }
-
             string normalized = NormalizeCommand(rawCommand);
-            if (normalized.Length == 0)
-            {
-                return false;
-            }
-
-            foreach (string protectedCommand in GetProtectedCommandPrefixes())
-            {
-                if (normalized.StartsWith(protectedCommand, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return CreativeCommandGuardPolicy.IsProtectedCommand(normalized);
         }
 
         internal static void SendState(CreativeSession session)
@@ -111,17 +115,36 @@ namespace ValheimCreative.Features.Creative
             package.Write(ownerPlayerId);
             package.Write(playerId);
             package.Write(slotId ?? string.Empty);
-            package.Write(ModConfig.EnableCreativeCommandZoneGuard.Value);
-            package.Write(ModConfig.CreativeCommandZoneProtectedCommands.Value ?? string.Empty);
+            package.Write(CreativeCommandGuardPolicy.Enabled);
+            package.Write(CreativeCommandGuardPolicy.CommandPrefixPayload);
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, StateRpcName, package);
+            SentPolicyByPeerId[peerId] = CreativeCommandGuardPolicy.PolicyKey;
         }
 
-        private static IEnumerable<string> GetProtectedCommandPrefixes()
+        private static void PruneDisconnectedPeers()
         {
-            return ModConfig.CreativeCommandZoneProtectedCommands.Value
-                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(value => value.Trim().ToLowerInvariant())
-                .Where(value => value.Length > 0);
+            HashSet<long> connectedPeerIds = new();
+            foreach (ZNetPeer peer in ZNet.instance.m_peers)
+            {
+                if (peer != null)
+                {
+                    connectedPeerIds.Add(peer.m_uid);
+                }
+            }
+
+            List<long> stalePeerIds = new();
+            foreach (long peerId in SentPolicyByPeerId.Keys)
+            {
+                if (!connectedPeerIds.Contains(peerId))
+                {
+                    stalePeerIds.Add(peerId);
+                }
+            }
+
+            foreach (long peerId in stalePeerIds)
+            {
+                SentPolicyByPeerId.Remove(peerId);
+            }
         }
 
         private static string NormalizeCommand(string rawCommand)
