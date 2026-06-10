@@ -196,11 +196,11 @@ namespace ValheimCreative.Features.Creative
                         biome = parsedBiome;
                     }
 
-                    return new BlueprintMetadata(loadYOffset, biome);
+                    return new BlueprintMetadata(loadYOffset, biome, null);
                 }
 
                 return TryParseLoadYOffset(entry, out float legacyOffset)
-                    ? new BlueprintMetadata(legacyOffset, null)
+                    ? new BlueprintMetadata(legacyOffset, null, null)
                     : BlueprintMetadata.Empty;
             }
             catch (Exception ex)
@@ -258,6 +258,7 @@ namespace ValheimCreative.Features.Creative
             CreativeSession session,
             string creatorName,
             Heightmap.Biome biome,
+            CreativeTerrainSource? terrainSource,
             out int saved,
             out string error)
         {
@@ -300,7 +301,7 @@ namespace ValheimCreative.Features.Creative
             Write(path, blueprint);
             string safeName = Path.GetFileName(path);
             BlueprintMetadata currentMetadata = GetMetadata(safeName);
-            WriteMetadata(safeName, new BlueprintMetadata(currentMetadata.LoadYOffset, biome));
+            WriteMetadata(safeName, new BlueprintMetadata(currentMetadata.LoadYOffset, biome, terrainSource));
             saved = pieces.Count;
             return true;
         }
@@ -343,7 +344,7 @@ namespace ValheimCreative.Features.Creative
             }
 
             BlueprintMetadata currentMetadata = GetMetadata(safeName);
-            WriteMetadata(safeName, new BlueprintMetadata(offset, currentMetadata.Biome));
+            WriteMetadata(safeName, new BlueprintMetadata(offset, currentMetadata.Biome, currentMetadata.TerrainSource));
             return true;
         }
 
@@ -360,6 +361,15 @@ namespace ValheimCreative.Features.Creative
             if (metadata.Biome.HasValue)
             {
                 entry["biome"] = metadata.Biome.Value.ToString();
+            }
+
+            if (metadata.TerrainSource != null)
+            {
+                entry["terrainMode"] = CreativeTerrainMode.WorldSeedPatch.ToString();
+                entry["terrainSourceCenter"] = FormatVector(metadata.TerrainSource.Center);
+                entry["terrainSourceBiome"] = metadata.TerrainSource.Biome.ToString();
+                entry["terrainSourceWorldSeed"] = metadata.TerrainSource.WorldSeed;
+                entry["terrainSourceWorldSeedName"] = metadata.TerrainSource.WorldSeedName;
             }
 
             blueprints[blueprintFileName] = entry;
@@ -602,6 +612,15 @@ namespace ValheimCreative.Features.Creative
             return value.ToString("G9", Invariant);
         }
 
+        private static string FormatVector(Vector3 value)
+        {
+            return string.Join(
+                ",",
+                FormatFloat(value.x),
+                FormatFloat(value.y),
+                FormatFloat(value.z));
+        }
+
         private static string NormalizeBlueprintName(string fileName)
         {
             string name = fileName.Trim();
@@ -648,16 +667,18 @@ namespace ValheimCreative.Features.Creative
 
         private readonly struct BlueprintMetadata
         {
-            internal static readonly BlueprintMetadata Empty = new(0f, null);
+            internal static readonly BlueprintMetadata Empty = new(0f, null, null);
 
-            internal BlueprintMetadata(float loadYOffset, Heightmap.Biome? biome)
+            internal BlueprintMetadata(float loadYOffset, Heightmap.Biome? biome, CreativeTerrainSource? terrainSource)
             {
                 LoadYOffset = loadYOffset;
                 Biome = biome;
+                TerrainSource = terrainSource;
             }
 
             internal float LoadYOffset { get; }
             internal Heightmap.Biome? Biome { get; }
+            internal CreativeTerrainSource? TerrainSource { get; }
         }
     }
 }

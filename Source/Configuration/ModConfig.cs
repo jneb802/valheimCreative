@@ -14,6 +14,11 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> CreativePosition = null!;
         internal static ConfigEntry<string> CreativeRotation = null!;
         internal static ConfigEntry<float> CreativeZoneSpacing = null!;
+        internal static ConfigEntry<string> CreativeTerrainMode = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceMinDistance = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceMaxDistance = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceMinHeight = null!;
+        internal static ConfigEntry<int> CreativeTerrainSourceSearchAttempts = null!;
         internal static ConfigEntry<bool> SpawnCreativeLocation = null!;
         internal static ConfigEntry<string> CreativeLocationPrefab = null!;
         internal static ConfigEntry<bool> IncludeNoWorkbench = null!;
@@ -79,6 +84,36 @@ namespace ValheimCreative.Configuration
                 "CreativeZoneSpacing",
                 1920f,
                 "Distance between creative zone centers. Default is 30 * 64.");
+
+            CreativeTerrainMode = config.Bind(
+                "Creative",
+                "CreativeTerrainMode",
+                "FlatPad",
+                "Creative zone terrain mode. FlatPad uses the packaged level terrain modifier. WorldSeedPatch keeps zones outside the map but makes PraetorisClient sample a matching in-world terrain patch.");
+
+            CreativeTerrainSourceMinDistance = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMinDistance",
+                1000f,
+                "Minimum world-center distance for random terrain source patch selection in WorldSeedPatch mode.");
+
+            CreativeTerrainSourceMaxDistance = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMaxDistance",
+                8500f,
+                "Maximum world-center distance for random terrain source patch selection in WorldSeedPatch mode.");
+
+            CreativeTerrainSourceMinHeight = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMinHeight",
+                1f,
+                "Minimum source terrain height for random terrain source patch selection in WorldSeedPatch mode.");
+
+            CreativeTerrainSourceSearchAttempts = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceSearchAttempts",
+                2000,
+                "Maximum random candidate count when selecting a biome-matched source terrain patch in WorldSeedPatch mode.");
 
             SpawnCreativeLocation = config.Bind(
                 "Creative",

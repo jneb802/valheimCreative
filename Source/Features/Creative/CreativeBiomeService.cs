@@ -6,7 +6,7 @@ namespace ValheimCreative.Features.Creative
 {
     internal static class CreativeBiomeService
     {
-        private const int ProtocolVersion = 1;
+        private const int ProtocolVersion = 2;
         private const string OverrideRpcName = "DiscordTools_CreativeBiomeOverride";
 
         internal static Heightmap.Biome DefaultBiome =>
@@ -43,15 +43,32 @@ namespace ValheimCreative.Features.Creative
 
         internal static void SendOverride(CreativeSession session)
         {
-            SendOverride(session.PeerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: true, suppressSpawns: session.OwnerPlayerId != 0L);
+            CreativeSessionManager.TryGetTerrainSource(session.OwnerPlayerId, out CreativeTerrainSource? terrainSource);
+            SendOverride(
+                session.PeerId,
+                session.SlotId,
+                session.CreativePosition,
+                session.ZoneRadius,
+                terrainSource?.Biome ?? session.CreativeBiome,
+                enabled: true,
+                suppressSpawns: session.OwnerPlayerId != 0L,
+                terrainSource);
         }
 
         internal static void ClearOverride(long peerId, CreativeSession session)
         {
-            SendOverride(peerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: false, suppressSpawns: false);
+            SendOverride(peerId, session.SlotId, session.CreativePosition, session.ZoneRadius, session.CreativeBiome, enabled: false, suppressSpawns: false, terrainSource: null);
         }
 
-        private static void SendOverride(long peerId, string slotId, Vector3 center, float radius, Heightmap.Biome biome, bool enabled, bool suppressSpawns)
+        private static void SendOverride(
+            long peerId,
+            string slotId,
+            Vector3 center,
+            float radius,
+            Heightmap.Biome biome,
+            bool enabled,
+            bool suppressSpawns,
+            CreativeTerrainSource? terrainSource)
         {
             if (peerId == 0L || ZRoutedRpc.instance == null)
             {
@@ -67,6 +84,8 @@ namespace ValheimCreative.Features.Creative
             package.Write(Mathf.Max(1f, radius));
             package.Write((int)biome);
             package.Write(suppressSpawns);
+            package.Write(terrainSource != null);
+            package.Write(terrainSource?.Center ?? Vector3.zero);
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, OverrideRpcName, package);
         }
     }

@@ -19,6 +19,10 @@ namespace ValheimCreative.Features.Creative
         private const float CreativeLocationObjectCleanupRetrySeconds = 1f;
         private const float CreativeLocationObjectCleanupDurationSeconds = 8f;
         private const float ZoneMigrationPositionTolerance = 0.1f;
+        private const float WorldSeedPatchEdgeBuffer = 512f;
+        private const float WorldSeedPatchTeleportHeightOffset = 1.5f;
+        private const float CreativeZonePositionTolerance = 8f;
+        private const float CreativeZoneHeightTolerance = 32f;
         private const string CreativeTerrainModifierPrefab = "digg_v2";
         private const string TerrainModifierComponentName = "TerrainModifier";
         private const string ZdoHasFields = "HasFields";
@@ -56,23 +60,24 @@ namespace ValheimCreative.Features.Creative
 
             if (SessionsByPlayerId.TryGetValue(playerId, out CreativeSession existing))
             {
-                if (!TryEnsureCreativeLocation(existing.CreativePosition, existing.SlotId, out string locationError))
+                if (!TryPrepareCreativeTerrain(existing.OwnerPlayerId, existing.CreativePosition, existing.SlotId, out string locationError))
                 {
                     return Lines(locationError);
                 }
 
+                existing = SessionsByPlayerId[playerId];
                 existing.PeerId = ResolvePeerId(playerZdo, peerId);
                 SendCreativeKeys(existing);
                 CreativeBiomeService.SendOverride(existing);
                 CreativeCommandZoneGuard.SendState(existing);
-                TeleportTo(playerZdo, existing.CreativePosition, existing.CreativeRotation);
+                TeleportToCreative(playerZdo, existing);
                 Save();
                 return Lines("Creative session restored.");
             }
 
             string playerName = GetPlayerName(playerZdo, fallbackName);
             CreativeZone zone = GetOrCreateZone(playerId, playerName);
-            if (!TryEnsureCreativeLocation(zone.Position, zone.SlotId, out string newLocationError))
+            if (!TryPrepareCreativeTerrain(zone.OwnerPlayerId, zone.Position, zone.SlotId, out string newLocationError))
             {
                 return Lines(newLocationError);
             }
@@ -94,7 +99,7 @@ namespace ValheimCreative.Features.Creative
             SendCreativeKeys(session);
             CreativeBiomeService.SendOverride(session);
             CreativeCommandZoneGuard.SendState(session);
-            TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
+            TeleportToCreative(playerZdo, session);
             Save();
             LogDebug($"Started creative session for {session.PlayerName} ({session.PlayerId}).");
             return Lines("Creative build mode enabled. Use !return to leave.");
@@ -135,7 +140,10 @@ namespace ValheimCreative.Features.Creative
                 return Lines("No active creative session.");
             }
 
-            return Lines($"Active creative session: {session.SlotId}, radius={FormatRadius(session.ZoneRadius)}m, biome={session.CreativeBiome}.");
+            string terrain = TryGetTerrainSource(session.OwnerPlayerId, out CreativeTerrainSource? source) && source != null
+                ? $", terrain={CreativeTerrainMode.WorldSeedPatch}, source={Format(source.Center)}, sourceBiome={source.Biome}"
+                : string.Empty;
+            return Lines($"Active creative session: {session.SlotId}, radius={FormatRadius(session.ZoneRadius)}m, biome={session.CreativeBiome}{terrain}.");
         }
 
         internal static IEnumerable<string> GetInvite(ZDO playerZdo)
@@ -173,7 +181,7 @@ namespace ValheimCreative.Features.Creative
                 return Lines("Creative invite code was not found.");
             }
 
-            if (!TryEnsureCreativeLocation(zone.Position, zone.SlotId, out string locationError))
+            if (!TryPrepareCreativeTerrain(zone.OwnerPlayerId, zone.Position, zone.SlotId, out string locationError))
             {
                 return Lines(locationError);
             }
@@ -208,7 +216,7 @@ namespace ValheimCreative.Features.Creative
             SendCreativeKeys(session);
             CreativeBiomeService.SendOverride(session);
             CreativeCommandZoneGuard.SendState(session);
-            TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
+            TeleportToCreative(playerZdo, session);
             Save();
             LogDebug($"Joined creative session for {session.PlayerName} ({session.PlayerId}) to owner {zone.OwnerPlayerId}.");
             return Lines($"Joined {zone.OwnerPlayerName}'s creative zone. Use !return to leave.");
@@ -292,12 +300,13 @@ namespace ValheimCreative.Features.Creative
             ZoneSystem.instance.m_locationInstances.Remove(zone);
             int removed = DestroyCreativeZoneZdos(session.CreativePosition, session.ZoneRadius);
 
-            if (!TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out string error))
+            if (!TryPrepareCreativeTerrain(session.OwnerPlayerId, session.CreativePosition, session.SlotId, out string error))
             {
                 return Lines(error);
             }
 
-            TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
+            session = SessionsByPlayerId[playerId];
+            TeleportToCreative(playerZdo, session);
             CreativeBiomeService.SendOverride(session);
             CreativeCommandZoneGuard.SendState(session);
             ValheimCreativePlugin.ModLogger.LogInfo($"Reset creative zone {session.SlotId} at {Format(session.CreativePosition)}. Removed {removed} object(s).");
@@ -342,7 +351,7 @@ namespace ValheimCreative.Features.Creative
 
             return ZonesByOwnerId.Values
                 .OrderBy(zone => zone.SlotIndex)
-                .Select(zone => $"{zone.OwnerPlayerId}: {zone.OwnerPlayerName}, slot={zone.SlotId}, radius={FormatRadius(zone.Radius)}m, biome={zone.Biome}");
+                .Select(zone => $"{zone.OwnerPlayerId}: {zone.OwnerPlayerName}, slot={zone.SlotId}, radius={FormatRadius(zone.Radius)}m, biome={zone.Biome}, terrain={FormatTerrain(zone)}");
         }
 
         internal static IEnumerable<string> GetOrSetCreativeZoneRadius(long ownerPlayerId, float? radius)
@@ -558,7 +567,9 @@ namespace ValheimCreative.Features.Creative
                     BuildZoneSlotId(migration.Zone.SlotIndex),
                     migration.NewPosition,
                     migration.Zone.Biome,
-                    migration.Zone.Radius);
+                    migration.Zone.Radius,
+                    migration.Zone.TerrainMode,
+                    migration.Zone.TerrainSource);
             }
 
             ModConfig.CreativeZoneSpacing.Value = normalizedSpacing;
@@ -633,11 +644,12 @@ namespace ValheimCreative.Features.Creative
                 return Lines("Use !creative before loading a blueprint.");
             }
 
-            if (!TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out string locationError))
+            if (!TryPrepareCreativeTerrain(session.OwnerPlayerId, session.CreativePosition, session.SlotId, out string locationError))
             {
                 return Lines(locationError);
             }
 
+            session = SessionsByPlayerId[playerId];
             if (!CreativeBlueprintService.TryLoadBlueprint(
                     fileName,
                     session,
@@ -712,6 +724,7 @@ namespace ValheimCreative.Features.Creative
                     session,
                     GetPlayerName(playerZdo, session.PlayerName),
                     session.CreativeBiome,
+                    TryGetTerrainSource(session.OwnerPlayerId, out CreativeTerrainSource? terrainSource) ? terrainSource : null,
                     out int saved,
                     out string error))
             {
@@ -738,7 +751,10 @@ namespace ValheimCreative.Features.Creative
                 return;
             }
 
-            _nextDeathRecoveryCheck = Time.time + Mathf.Max(0.25f, ModConfig.DeathRecoveryCheckSeconds.Value);
+            float recoveryInterval = SessionsByPlayerId.Values.Any(session => TryGetTerrainSource(session.OwnerPlayerId, out _))
+                ? 0.25f
+                : Mathf.Max(0.25f, ModConfig.DeathRecoveryCheckSeconds.Value);
+            _nextDeathRecoveryCheck = Time.time + recoveryInterval;
             foreach (CreativeSession session in SessionsByPlayerId.Values.ToList())
             {
                 ZDO? playerZdo = FindPlayerZdo(session.PlayerId);
@@ -764,21 +780,36 @@ namespace ValheimCreative.Features.Creative
 
                 if (session.AwaitingRespawn || session.WasDead)
                 {
-                    TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out _);
-                    SendSessionKeys(session);
-                    CreativeBiomeService.SendOverride(session);
-                    CreativeCommandZoneGuard.SendState(session);
-                    TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
-                    session.AwaitingRespawn = false;
-                    session.WasDead = false;
+                    TryPrepareCreativeTerrain(session.OwnerPlayerId, session.CreativePosition, session.SlotId, out _);
+                    CreativeSession refreshedSession = SessionsByPlayerId.TryGetValue(session.PlayerId, out CreativeSession activeSession)
+                        ? activeSession
+                        : session;
+                    SendSessionKeys(refreshedSession);
+                    CreativeBiomeService.SendOverride(refreshedSession);
+                    CreativeCommandZoneGuard.SendState(refreshedSession);
+                    TeleportToCreative(playerZdo, refreshedSession);
+                    refreshedSession.AwaitingRespawn = false;
+                    refreshedSession.WasDead = false;
                     Save();
-                    LogDebug($"Recovered creative session after death for {session.PlayerName} ({session.PlayerId}).");
+                    LogDebug($"Recovered creative session after death for {refreshedSession.PlayerName} ({refreshedSession.PlayerId}).");
                 }
                 else if (!session.CreativeKeysSent)
                 {
                     SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
                     CreativeCommandZoneGuard.SendState(session);
+                }
+                else if (!IsInsideCreativeZone(playerZdo, session))
+                {
+                    TryPrepareCreativeTerrain(session.OwnerPlayerId, session.CreativePosition, session.SlotId, out _);
+                    CreativeSession refreshedSession = SessionsByPlayerId.TryGetValue(session.PlayerId, out CreativeSession activeSession)
+                        ? activeSession
+                        : session;
+                    SendSessionKeys(refreshedSession);
+                    CreativeBiomeService.SendOverride(refreshedSession);
+                    TeleportToCreative(playerZdo, refreshedSession);
+                    LogDebug(
+                        $"Reapplied creative teleport for {refreshedSession.PlayerName} ({refreshedSession.PlayerId}) after player ZDO position was outside {refreshedSession.SlotId}.");
                 }
             }
         }
@@ -875,7 +906,8 @@ namespace ValheimCreative.Features.Creative
                         BuildZoneSlotId(slotIndex),
                         GetZonePosition(slotIndex),
                         session.CreativeBiome,
-                        session.ZoneRadius);
+                        session.ZoneRadius,
+                        GetConfiguredTerrainMode());
                 }
             }
 
@@ -921,11 +953,17 @@ namespace ValheimCreative.Features.Creative
             if (ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
             {
                 zone.OwnerPlayerName = ownerPlayerName;
+                if (EnsureConfiguredTerrainMode(zone, forceNewSource: false))
+                {
+                    SaveZones();
+                }
+
                 return zone;
             }
 
             int slotIndex = GetNextZoneSlotIndex();
             string slotId = BuildZoneSlotId(slotIndex);
+            CreativeTerrainMode terrainMode = GetConfiguredTerrainMode();
             zone = new CreativeZone(
                 ownerPlayerId,
                 ownerPlayerName,
@@ -933,7 +971,9 @@ namespace ValheimCreative.Features.Creative
                 slotId,
                 GetZonePosition(slotIndex),
                 CreativeBiomeService.DefaultBiome,
-                ModConfig.DefaultCreativeZoneRadiusValue);
+                ModConfig.DefaultCreativeZoneRadiusValue,
+                terrainMode);
+            EnsureConfiguredTerrainMode(zone, forceNewSource: false);
             ZonesByOwnerId[ownerPlayerId] = zone;
             SaveZones();
             LogDebug($"Allocated creative zone {slotId} for {ownerPlayerName} ({ownerPlayerId}) at {Format(zone.Position)}.");
@@ -945,6 +985,7 @@ namespace ValheimCreative.Features.Creative
             if (ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
             {
                 zone.Biome = biome;
+                EnsureConfiguredTerrainMode(zone, forceNewSource: true);
             }
 
             foreach (CreativeSession activeSession in SessionsByPlayerId.Values)
@@ -1002,6 +1043,32 @@ namespace ValheimCreative.Features.Creative
                 : ModConfig.DefaultCreativeZoneRadiusValue;
         }
 
+        internal static bool TryGetTerrainSource(long ownerPlayerId, out CreativeTerrainSource? source)
+        {
+            source = null;
+            if (!ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone) ||
+                zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch ||
+                zone.TerrainSource == null)
+            {
+                return false;
+            }
+
+            source = zone.TerrainSource;
+            return true;
+        }
+
+        private static string FormatTerrain(CreativeZone zone)
+        {
+            if (zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch)
+            {
+                return zone.TerrainMode.ToString();
+            }
+
+            return zone.TerrainSource != null
+                ? $"{zone.TerrainMode} source={Format(zone.TerrainSource.Center)} sourceBiome={zone.TerrainSource.Biome}"
+                : $"{zone.TerrainMode} source=unselected";
+        }
+
         private static void ReconcileCreativeState()
         {
             foreach (CreativeZone zone in ZonesByOwnerId.Values.ToList())
@@ -1013,12 +1080,44 @@ namespace ValheimCreative.Features.Creative
                     BuildZoneSlotId(zone.SlotIndex),
                     zone.Position,
                     zone.Biome,
-                    zone.Radius);
+                    zone.Radius,
+                    zone.TerrainMode,
+                    zone.TerrainSource);
             }
 
             foreach (CreativeSession session in SessionsByPlayerId.Values.ToList())
             {
                 if (!ZonesByOwnerId.TryGetValue(session.OwnerPlayerId, out CreativeZone zone))
+                {
+                    continue;
+                }
+
+                SessionsByPlayerId[session.PlayerId] = new CreativeSession(
+                    session.PlayerId,
+                    session.PeerId,
+                    session.PlayerName,
+                    session.OwnerPlayerId,
+                    zone.SlotId,
+                    zone.Position,
+                    session.CreativeRotation,
+                    zone.Biome,
+                    zone.Radius,
+                    session.ReturnPosition,
+                    session.ReturnRotation,
+                    session.GrantCreativeKeys)
+                {
+                    AwaitingRespawn = session.AwaitingRespawn,
+                    WasDead = session.WasDead,
+                    CreativeKeysSent = session.CreativeKeysSent
+                };
+            }
+        }
+
+        private static void SyncSessionsForZone(CreativeZone zone)
+        {
+            foreach (CreativeSession session in SessionsByPlayerId.Values.ToList())
+            {
+                if (session.OwnerPlayerId != zone.OwnerPlayerId)
                 {
                     continue;
                 }
@@ -1082,6 +1181,163 @@ namespace ValheimCreative.Features.Creative
             Vector3 origin = ModConfig.CreativePositionValue;
             float normalizedSpacing = Mathf.Max(64f, spacing);
             return origin + new Vector3(slotIndex * normalizedSpacing, 0f, 0f);
+        }
+
+        private static CreativeTerrainMode GetConfiguredTerrainMode()
+        {
+            return Enum.TryParse(ModConfig.CreativeTerrainMode.Value, ignoreCase: true, out CreativeTerrainMode mode)
+                ? mode
+                : CreativeTerrainMode.FlatPad;
+        }
+
+        private static bool EnsureConfiguredTerrainMode(CreativeZone zone, bool forceNewSource)
+        {
+            CreativeTerrainMode configuredMode = GetConfiguredTerrainMode();
+            bool changed = false;
+            if (zone.TerrainMode != configuredMode)
+            {
+                zone.TerrainMode = configuredMode;
+                changed = true;
+            }
+
+            if (configuredMode != CreativeTerrainMode.WorldSeedPatch)
+            {
+                if (zone.TerrainSource != null)
+                {
+                    zone.TerrainSource = null;
+                    changed = true;
+                }
+
+                return changed;
+            }
+
+            if (TryEnsureTerrainSource(zone, forceNewSource, out _, out bool sourceChanged) && sourceChanged)
+            {
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool TryEnsureTerrainSource(CreativeZone zone, bool forceNewSource, out string error, out bool changed)
+        {
+            error = string.Empty;
+            changed = false;
+            int worldSeed = GetWorldSeed();
+            CreativeTerrainSource? existing = zone.TerrainSource;
+            if (!forceNewSource &&
+                existing != null &&
+                existing.WorldSeed == worldSeed &&
+                existing.Biome == zone.Biome)
+            {
+                if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                {
+                    changed = true;
+                }
+
+                return true;
+            }
+
+            if (!TrySelectTerrainSource(zone, out CreativeTerrainSource? source, out error) || source == null)
+            {
+                return false;
+            }
+
+            zone.TerrainSource = source;
+            TryAlignZoneHeightToTerrainSource(zone, source);
+            changed = true;
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Selected terrain source for {zone.SlotId}: {source.Biome} at {Format(source.Center)} from world seed {source.WorldSeed}.");
+            return true;
+        }
+
+        private static bool TryAlignZoneHeightToTerrainSource(CreativeZone zone, CreativeTerrainSource source)
+        {
+            Vector3 alignedPosition = new(zone.Position.x, source.Center.y, zone.Position.z);
+            if (Mathf.Abs(zone.Position.y - alignedPosition.y) <= ZoneMigrationPositionTolerance)
+            {
+                SyncSessionsForZone(zone);
+                return false;
+            }
+
+            zone.Position = alignedPosition;
+            SyncSessionsForZone(zone);
+            ValheimCreativePlugin.ModLogger.LogInfo($"Aligned {zone.SlotId} terrain destination height to {Format(alignedPosition)}.");
+            return true;
+        }
+
+        private static bool TrySelectTerrainSource(CreativeZone zone, out CreativeTerrainSource? source, out string error)
+        {
+            source = null;
+            error = string.Empty;
+            if (WorldGenerator.instance == null)
+            {
+                error = "World generator is not ready yet.";
+                return false;
+            }
+
+            Heightmap.Biome targetBiome = zone.Biome;
+            float minDistance = Mathf.Max(0f, ModConfig.CreativeTerrainSourceMinDistance.Value);
+            float maxDistance = Mathf.Clamp(
+                ModConfig.CreativeTerrainSourceMaxDistance.Value,
+                minDistance + 1f,
+                WorldGenerator.worldSize - WorldSeedPatchEdgeBuffer);
+            float minHeight = ModConfig.CreativeTerrainSourceMinHeight.Value;
+            int attempts = Mathf.Max(1, ModConfig.CreativeTerrainSourceSearchAttempts.Value);
+            int seed = GetTerrainSourceRandomSeed(zone);
+            System.Random random = new(seed);
+
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
+                double angle = random.NextDouble() * Math.PI * 2.0;
+                double radiusT = random.NextDouble();
+                float distance = Mathf.Sqrt(Mathf.Lerp(minDistance * minDistance, maxDistance * maxDistance, (float)radiusT));
+                float x = Mathf.Cos((float)angle) * distance;
+                float z = Mathf.Sin((float)angle) * distance;
+                Heightmap.Biome biome = WorldGenerator.instance.GetBiome(x, z);
+                if (biome != targetBiome)
+                {
+                    continue;
+                }
+
+                float height = WorldGenerator.instance.GetHeight(x, z);
+                if (targetBiome != Heightmap.Biome.Ocean && height < minHeight)
+                {
+                    continue;
+                }
+
+                source = new CreativeTerrainSource(
+                    new Vector3(x, height, z),
+                    biome,
+                    GetWorldSeed(),
+                    GetWorldSeedName());
+                return true;
+            }
+
+            error = $"Could not find {targetBiome} terrain source after {attempts} candidate(s).";
+            return false;
+        }
+
+        private static int GetTerrainSourceRandomSeed(CreativeZone zone)
+        {
+            unchecked
+            {
+                int seed = GetWorldSeed();
+                seed = (seed * 397) ^ zone.OwnerPlayerId.GetHashCode();
+                seed = (seed * 397) ^ zone.SlotIndex;
+                seed = (seed * 397) ^ zone.Biome.GetHashCode();
+                return seed;
+            }
+        }
+
+        private static int GetWorldSeed()
+        {
+            return WorldGenerator.instance != null ? WorldGenerator.instance.GetSeed() : 0;
+        }
+
+        private static string GetWorldSeedName()
+        {
+            return ZNet.World != null ? ZNet.World.m_seedName : string.Empty;
         }
 
         private static string BuildZoneSlotId(int slotIndex)
@@ -1192,6 +1448,21 @@ namespace ValheimCreative.Features.Creative
             return playerZdo.GetBool(ZDOVars.s_dead);
         }
 
+        private static bool IsInsideCreativeZone(ZDO playerZdo, CreativeSession session)
+        {
+            Vector3 position = playerZdo.GetPosition();
+            Vector2 player = new(position.x, position.z);
+            Vector2 center = new(session.CreativePosition.x, session.CreativePosition.z);
+            float allowedDistance = Mathf.Max(1f, session.ZoneRadius) + CreativeZonePositionTolerance;
+            if (Vector2.Distance(player, center) > allowedDistance)
+            {
+                return false;
+            }
+
+            Vector3 expectedPosition = GetCreativeTeleportPosition(session);
+            return Mathf.Abs(position.y - expectedPosition.y) <= CreativeZoneHeightTolerance;
+        }
+
         internal static long ResolvePeerId(ZDO playerZdo, long fallback)
         {
             long owner = playerZdo.GetOwner();
@@ -1218,12 +1489,64 @@ namespace ValheimCreative.Features.Creative
                 return;
             }
 
+            playerZdo.SetPosition(position);
+            playerZdo.SetRotation(rotation);
             ZRoutedRpc.instance.InvokeRoutedRPC(owner, playerZdo.m_uid, "RPC_TeleportTo", position, rotation, true);
+        }
+
+        private static void TeleportToCreative(ZDO playerZdo, CreativeSession session)
+        {
+            TeleportTo(playerZdo, GetCreativeTeleportPosition(session), session.CreativeRotation);
+        }
+
+        private static Vector3 GetCreativeTeleportPosition(CreativeSession session)
+        {
+            if (!TryGetTerrainSource(session.OwnerPlayerId, out CreativeTerrainSource? source) || source == null)
+            {
+                return session.CreativePosition;
+            }
+
+            return session.CreativePosition + Vector3.up * WorldSeedPatchTeleportHeightOffset;
         }
 
         internal static bool TryEnsureCreativeLocation(Vector3 position, string slotId, out string error)
         {
             return TryEnsureCreativeLocation(position, slotId, false, out error);
+        }
+
+        private static bool TryPrepareCreativeTerrain(long ownerPlayerId, Vector3 position, string slotId, out string error)
+        {
+            error = string.Empty;
+            if (!ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
+            {
+                return TryEnsureCreativeLocation(position, slotId, out error);
+            }
+
+            bool changed = EnsureConfiguredTerrainMode(zone, forceNewSource: false);
+            if (zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch)
+            {
+                if (changed)
+                {
+                    SaveZones();
+                }
+
+                return TryEnsureCreativeLocation(position, slotId, out error);
+            }
+
+            if (!TryEnsureTerrainSource(zone, forceNewSource: false, out error, out bool sourceChanged))
+            {
+                return false;
+            }
+
+            if (changed || sourceChanged)
+            {
+                SaveZones();
+            }
+
+            Vector2i zoneId = ZoneSystem.GetZone(position);
+            ZoneSystem.instance.m_locationInstances.Remove(zoneId);
+            DestroyCreativeTerrainModifiers(position, slotId);
+            return true;
         }
 
         private static bool TryEnsureCreativeLocation(Vector3 position, string slotId, bool forceRespawn, out string error)
@@ -1324,6 +1647,13 @@ namespace ValheimCreative.Features.Creative
 
         private static bool TryRefreshCreativeTerrainModifier(CreativeZone zone, out string error)
         {
+            if (zone.TerrainMode == CreativeTerrainMode.WorldSeedPatch)
+            {
+                error = string.Empty;
+                DestroyCreativeTerrainModifiers(zone.Position, zone.SlotId);
+                return true;
+            }
+
             if (!TryEnsureCreativeLocation(zone.Position, zone.SlotId, true, out error))
             {
                 ValheimCreativePlugin.ModLogger.LogWarning(
@@ -1352,6 +1682,17 @@ namespace ValheimCreative.Features.Creative
                 !ZonesByOwnerId.TryGetValue(resolvedOwnerId, out CreativeZone zone))
             {
                 return Lines($"Creative zone was not found for player {ownerPlayerId}.");
+            }
+
+            if (zone.TerrainMode == CreativeTerrainMode.WorldSeedPatch)
+            {
+                if (zone.TerrainSource == null)
+                {
+                    return Lines($"{zone.SlotId} terrain={zone.TerrainMode}, source=unselected.");
+                }
+
+                return Lines(
+                    $"{zone.SlotId} terrain={zone.TerrainMode}, destination={Format(zone.Position)}, source={Format(zone.TerrainSource.Center)}, sourceBiome={zone.TerrainSource.Biome}, worldSeed={zone.TerrainSource.WorldSeed}.");
             }
 
             List<ZDO> modifiers = FindCreativeTerrainModifierZdos(zone.Position);
