@@ -12,7 +12,7 @@ namespace ValheimCreative
     {
         internal const string ModGuid = "warpalicious.valheimCreative";
         internal const string ModName = "valheimCreative";
-        internal const string ModVersion = "0.2.8";
+        internal const string ModVersion = "0.2.9";
 
         private readonly Harmony _harmony = new(ModGuid);
 
@@ -21,6 +21,7 @@ namespace ValheimCreative
         public void Awake()
         {
             ModConfig.Bind(Config);
+            CreativeCommandZoneGuard.Initialize();
             CreativeInventoryGate.RegisterRoutedRpcHandler();
             CreativeSiegePortalRpc.RegisterRoutedRpcHandler();
             CreativeConsoleCommands.Register();
@@ -36,6 +37,7 @@ namespace ValheimCreative
             CreativeInventoryGate.Update();
             CreativeSiegePortalRpc.RegisterRoutedRpcHandler();
             CreativeSessionManager.Update();
+            CreativeCommandZoneGuard.Update();
         }
 
         private void OnDestroy()

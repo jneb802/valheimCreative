@@ -6,7 +6,9 @@
     <VALHEIM_MANAGED>$(VALHEIM_INSTALL)/Valheim.app/Contents/Resources/Data/Managed</VALHEIM_MANAGED>
     <BEPINEX_PATH>$(VALHEIM_INSTALL)/BepInEx</BEPINEX_PATH>
     <BEPINEX_CORE>$(BEPINEX_PATH)/core</BEPINEX_CORE>
+    <BEPINEX_PLUGINS>$(BEPINEX_PATH)/plugins</BEPINEX_PLUGINS>
     <PUBLICIZED_PATH>$(VALHEIM_MANAGED)/publicized_assemblies</PUBLICIZED_PATH>
+    <YAMLDOTNET_PATH>$(BEPINEX_PLUGINS)/ValheimModding-YamlDotNet</YAMLDOTNET_PATH>
   </PropertyGroup>
 
   <PropertyGroup Condition="$(OS) == 'Windows_NT'">
@@ -14,7 +16,9 @@
     <VALHEIM_MANAGED>$(VALHEIM_INSTALL)\valheim_Data\Managed</VALHEIM_MANAGED>
     <BEPINEX_PATH>$(VALHEIM_INSTALL)\BepInEx</BEPINEX_PATH>
     <BEPINEX_CORE>$(BEPINEX_PATH)\core</BEPINEX_CORE>
+    <BEPINEX_PLUGINS>$(BEPINEX_PATH)\plugins</BEPINEX_PLUGINS>
     <PUBLICIZED_PATH>$(VALHEIM_MANAGED)\publicized_assemblies</PUBLICIZED_PATH>
+    <YAMLDOTNET_PATH>$(BEPINEX_PLUGINS)\ValheimModding-YamlDotNet</YAMLDOTNET_PATH>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +32,10 @@
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>lib/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="YamlDotNet">
+      <HintPath>$(YAMLDOTNET_PATH)/YamlDotNet.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
