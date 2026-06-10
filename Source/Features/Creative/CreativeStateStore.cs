@@ -187,8 +187,33 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("radius")]
             public float Radius { get; set; }
 
+            [JsonProperty("terrainMode")]
+            public string TerrainMode { get; set; } = string.Empty;
+
+            [JsonProperty("terrainSourceCenter")]
+            public string TerrainSourceCenter { get; set; } = string.Empty;
+
+            [JsonProperty("terrainSourceBiome")]
+            public string TerrainSourceBiome { get; set; } = string.Empty;
+
+            [JsonProperty("terrainSourceWorldSeed")]
+            public int TerrainSourceWorldSeed { get; set; }
+
+            [JsonProperty("terrainSourceWorldSeedName")]
+            public string TerrainSourceWorldSeedName { get; set; } = string.Empty;
+
             public CreativeZone ToZone()
             {
+                CreativeTerrainSource? terrainSource = null;
+                if (!string.IsNullOrWhiteSpace(TerrainSourceCenter))
+                {
+                    terrainSource = new CreativeTerrainSource(
+                        ParseVector(TerrainSourceCenter),
+                        ParseBiome(TerrainSourceBiome),
+                        TerrainSourceWorldSeed,
+                        TerrainSourceWorldSeedName);
+                }
+
                 return new CreativeZone(
                     OwnerPlayerId,
                     OwnerPlayerName,
@@ -196,11 +221,14 @@ namespace ValheimCreative.Features.Creative
                     SlotId,
                     ParseVector(Position),
                     ParseBiome(Biome),
-                    RadiusOrDefault(Radius, ModConfig.DefaultCreativeZoneRadiusValue));
+                    RadiusOrDefault(Radius, ModConfig.DefaultCreativeZoneRadiusValue),
+                    ParseTerrainMode(TerrainMode),
+                    terrainSource);
             }
 
             public static ZoneRecord FromZone(CreativeZone zone)
             {
+                CreativeTerrainSource? terrainSource = zone.TerrainSource;
                 return new ZoneRecord
                 {
                     OwnerPlayerId = zone.OwnerPlayerId,
@@ -209,7 +237,12 @@ namespace ValheimCreative.Features.Creative
                     SlotId = zone.SlotId,
                     Position = Format(zone.Position),
                     Biome = zone.Biome.ToString(),
-                    Radius = zone.Radius
+                    Radius = zone.Radius,
+                    TerrainMode = zone.TerrainMode.ToString(),
+                    TerrainSourceCenter = terrainSource != null ? Format(terrainSource.Center) : string.Empty,
+                    TerrainSourceBiome = terrainSource != null ? terrainSource.Biome.ToString() : string.Empty,
+                    TerrainSourceWorldSeed = terrainSource?.WorldSeed ?? 0,
+                    TerrainSourceWorldSeedName = terrainSource?.WorldSeedName ?? string.Empty
                 };
             }
         }
@@ -247,6 +280,13 @@ namespace ValheimCreative.Features.Creative
             return CreativeBiomeService.TryParseBiome(raw, out Heightmap.Biome biome)
                 ? biome
                 : CreativeBiomeService.DefaultBiome;
+        }
+
+        private static CreativeTerrainMode ParseTerrainMode(string raw)
+        {
+            return Enum.TryParse(raw, ignoreCase: true, out CreativeTerrainMode mode)
+                ? mode
+                : CreativeTerrainMode.FlatPad;
         }
     }
 }
