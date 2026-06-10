@@ -64,6 +64,7 @@ namespace ValheimCreative.Features.Creative
                 existing.PeerId = ResolvePeerId(playerZdo, peerId);
                 SendCreativeKeys(existing);
                 CreativeBiomeService.SendOverride(existing);
+                CreativeCommandZoneGuard.SendState(existing);
                 TeleportTo(playerZdo, existing.CreativePosition, existing.CreativeRotation);
                 Save();
                 return Lines("Creative session restored.");
@@ -92,6 +93,7 @@ namespace ValheimCreative.Features.Creative
             SessionsByPlayerId[playerId] = session;
             SendCreativeKeys(session);
             CreativeBiomeService.SendOverride(session);
+            CreativeCommandZoneGuard.SendState(session);
             TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             Save();
             LogDebug($"Started creative session for {session.PlayerName} ({session.PlayerId}).");
@@ -108,13 +110,16 @@ namespace ValheimCreative.Features.Creative
 
             if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
             {
-                SendNormalKeys(ResolvePeerId(playerZdo, peerId));
+                long resolvedPeerId = ResolvePeerId(playerZdo, peerId);
+                SendNormalKeys(resolvedPeerId);
+                CreativeCommandZoneGuard.ClearState(resolvedPeerId);
                 return Lines("You do not have an active creative session.");
             }
 
             session.PeerId = ResolvePeerId(playerZdo, peerId);
             SendNormalKeys(session.PeerId);
             CreativeBiomeService.ClearOverride(session.PeerId, session);
+            CreativeCommandZoneGuard.ClearState(session.PeerId);
             TeleportTo(playerZdo, session.ReturnPosition, session.ReturnRotation);
             SessionsByPlayerId.Remove(playerId);
             Save();
@@ -202,6 +207,7 @@ namespace ValheimCreative.Features.Creative
             SessionsByPlayerId[playerId] = session;
             SendCreativeKeys(session);
             CreativeBiomeService.SendOverride(session);
+            CreativeCommandZoneGuard.SendState(session);
             TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             Save();
             LogDebug($"Joined creative session for {session.PlayerName} ({session.PlayerId}) to owner {zone.OwnerPlayerId}.");
@@ -293,6 +299,7 @@ namespace ValheimCreative.Features.Creative
 
             TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             CreativeBiomeService.SendOverride(session);
+            CreativeCommandZoneGuard.SendState(session);
             ValheimCreativePlugin.ModLogger.LogInfo($"Reset creative zone {session.SlotId} at {Format(session.CreativePosition)}. Removed {removed} object(s).");
             return Lines($"Creative zone reset. Removed {removed} object(s).");
         }
@@ -460,6 +467,7 @@ namespace ValheimCreative.Features.Creative
 
                 activeSession.ZoneRadius = normalizedRadius;
                 CreativeBiomeService.SendOverride(activeSession);
+                CreativeCommandZoneGuard.SendState(activeSession);
             }
         }
 
@@ -474,6 +482,17 @@ namespace ValheimCreative.Features.Creative
             }
 
             return false;
+        }
+
+        internal static bool IsPlayerInsideActiveCreativeZone(ZDO playerZdo)
+        {
+            long playerId = GetPlayerId(playerZdo);
+            if (!SessionsByPlayerId.TryGetValue(playerId, out CreativeSession session))
+            {
+                return false;
+            }
+
+            return Utils.DistanceXZ(playerZdo.GetPosition(), session.CreativePosition) <= session.ZoneRadius;
         }
 
         internal static IEnumerable<string> MigrateCreativeZoneSpacing(float targetSpacing, bool apply)
@@ -563,6 +582,7 @@ namespace ValheimCreative.Features.Creative
             foreach (CreativeSession session in SessionsByPlayerId.Values)
             {
                 CreativeBiomeService.SendOverride(session);
+                CreativeCommandZoneGuard.SendState(session);
             }
 
             foreach (CreativeZoneMigration migration in migrations)
@@ -747,6 +767,7 @@ namespace ValheimCreative.Features.Creative
                     TryEnsureCreativeLocation(session.CreativePosition, session.SlotId, out _);
                     SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
+                    CreativeCommandZoneGuard.SendState(session);
                     TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
                     session.AwaitingRespawn = false;
                     session.WasDead = false;
@@ -757,6 +778,7 @@ namespace ValheimCreative.Features.Creative
                 {
                     SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
+                    CreativeCommandZoneGuard.SendState(session);
                 }
             }
         }
@@ -778,6 +800,7 @@ namespace ValheimCreative.Features.Creative
 
                 SendSessionKeys(session);
                 CreativeBiomeService.SendOverride(session);
+                CreativeCommandZoneGuard.SendState(session);
             }
         }
 
@@ -933,6 +956,7 @@ namespace ValheimCreative.Features.Creative
 
                 activeSession.CreativeBiome = biome;
                 CreativeBiomeService.SendOverride(activeSession);
+                CreativeCommandZoneGuard.SendState(activeSession);
             }
         }
 
@@ -953,6 +977,7 @@ namespace ValheimCreative.Features.Creative
 
                 activeSession.ZoneRadius = normalizedRadius;
                 CreativeBiomeService.SendOverride(activeSession);
+                CreativeCommandZoneGuard.SendState(activeSession);
             }
         }
 

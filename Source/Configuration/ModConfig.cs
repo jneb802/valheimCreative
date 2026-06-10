@@ -27,6 +27,8 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<string> BlueprintDirectory = null!;
         internal static ConfigEntry<string> BlueprintMetadataFile = null!;
+        internal static ConfigEntry<bool> EnableCreativeCommandZoneGuard = null!;
+        internal static ConfigEntry<string> CreativeCommandZoneProtectedCommands = null!;
         internal static ConfigEntry<string> SiegeDefinitionsFile = null!;
         internal static ConfigEntry<string> SiegeStateFile = null!;
         internal static ConfigEntry<string> SiegePosition = null!;
@@ -157,6 +159,18 @@ namespace ValheimCreative.Configuration
                 "BlueprintMetadataFile",
                 "blueprint-metadata.json",
                 "JSON file in the blueprint directory that maps blueprint filenames to loadYOffset and biome values.");
+
+            EnableCreativeCommandZoneGuard = config.Bind(
+                "Creative command guard",
+                "EnableCreativeCommandZoneGuard",
+                true,
+                "Requires protected console commands to be used inside the player's active creative zone.");
+
+            CreativeCommandZoneProtectedCommands = config.Bind(
+                "Creative command guard",
+                "ProtectedCommands",
+                "tweak_",
+                "Comma-separated command names or prefixes that require an active creative zone. Prefix matching is used.");
 
             SiegeDefinitionsFile = config.Bind(
                 "Sieges",
