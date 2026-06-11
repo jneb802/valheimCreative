@@ -18,7 +18,12 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> CreativeTerrainSourceMinDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMaxDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMinHeight = null!;
+        internal static ConfigEntry<string> CreativeTerrainSourceMinHeightByBiome = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceMaxSpawnSlopeDegrees = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceValidationSampleSpacing = null!;
         internal static ConfigEntry<int> CreativeTerrainSourceSearchAttempts = null!;
+        internal static ConfigEntry<bool> EnableCreativeEnvironmentHotReload = null!;
+        internal static ConfigEntry<float> CreativeRegenerateCooldownSeconds = null!;
         internal static ConfigEntry<bool> SpawnCreativeLocation = null!;
         internal static ConfigEntry<string> CreativeLocationPrefab = null!;
         internal static ConfigEntry<bool> IncludeNoWorkbench = null!;
@@ -106,14 +111,44 @@ namespace ValheimCreative.Configuration
             CreativeTerrainSourceMinHeight = config.Bind(
                 "Creative",
                 "CreativeTerrainSourceMinHeight",
-                1f,
-                "Minimum source terrain height for random terrain source patch selection in WorldSeedPatch mode.");
+                32f,
+                "Fallback minimum source terrain height for random terrain source patch selection in WorldSeedPatch mode. Biome-specific values override this.");
+
+            CreativeTerrainSourceMinHeightByBiome = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMinHeightByBiome",
+                "Meadows=32,BlackForest=35,Swamp=31,Mountain=90,Plains=32,Mistlands=45,AshLands=32,DeepNorth=35",
+                "Comma-separated biome minimum source heights for WorldSeedPatch mode, in world Y units. Example: Meadows=32,Mountain=90. Missing biomes use CreativeTerrainSourceMinHeight.");
+
+            CreativeTerrainSourceMaxSpawnSlopeDegrees = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMaxSpawnSlopeDegrees",
+                30f,
+                "Maximum sampled slope in degrees around the creative zone spawn point when selecting a WorldSeedPatch terrain source. Higher values allow steeper terrain.");
+
+            CreativeTerrainSourceValidationSampleSpacing = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceValidationSampleSpacing",
+                16f,
+                "Sample spacing in meters for validating the copied WorldSeedPatch terrain footprint. Lower values are stricter and more expensive.");
 
             CreativeTerrainSourceSearchAttempts = config.Bind(
                 "Creative",
                 "CreativeTerrainSourceSearchAttempts",
                 2000,
                 "Maximum random candidate count when selecting a biome-matched source terrain patch in WorldSeedPatch mode.");
+
+            EnableCreativeEnvironmentHotReload = config.Bind(
+                "Creative",
+                "EnableCreativeEnvironmentHotReload",
+                false,
+                "Reloads valheimCreative.environment.yaml while the server is running. Disabled by default because vegetation refresh scans creative zone objects.");
+
+            CreativeRegenerateCooldownSeconds = config.Bind(
+                "Creative",
+                "CreativeRegenerateCooldownSeconds",
+                300f,
+                "Minimum seconds between player-triggered creative zone reset or biome regeneration actions per creative zone owner. Set 0 to disable.");
 
             SpawnCreativeLocation = config.Bind(
                 "Creative",
