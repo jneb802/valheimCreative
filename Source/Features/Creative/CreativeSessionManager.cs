@@ -594,7 +594,8 @@ namespace ValheimCreative.Features.Creative
                 return false;
             }
 
-            return Utils.DistanceXZ(playerZdo.GetPosition(), session.CreativePosition) <= session.ZoneRadius;
+            float allowedDistance = Mathf.Max(1f, session.ZoneRadius) + CreativeZonePositionTolerance;
+            return Utils.DistanceXZ(playerZdo.GetPosition(), session.CreativePosition) <= allowedDistance;
         }
 
         internal static IEnumerable<string> MigrateCreativeZoneSpacing(float targetSpacing, bool apply)
@@ -1107,10 +1108,23 @@ namespace ValheimCreative.Features.Creative
             float normalizedRadius = Mathf.Max(1f, radius);
             if (ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
             {
+                float previousRadius = zone.Radius;
+                bool radiusChanged = Mathf.Abs(previousRadius - normalizedRadius) > ZoneMigrationPositionTolerance;
+                if (radiusChanged)
+                {
+                    CreativeVegetationService.DestroyCreativeVegetation(zone, Mathf.Max(previousRadius, normalizedRadius));
+                }
+
                 zone.Radius = normalizedRadius;
+                if (radiusChanged)
+                {
+                    EnsureConfiguredTerrainMode(zone, forceNewSource: false);
+                    CreativeVegetationService.RegenerateCreativeVegetation(zone);
+                    SyncSessionsForZone(zone);
+                }
             }
 
-            foreach (CreativeSession activeSession in SessionsByPlayerId.Values)
+            foreach (CreativeSession activeSession in SessionsByPlayerId.Values.ToList())
             {
                 if (activeSession.OwnerPlayerId != ownerPlayerId)
                 {

@@ -89,6 +89,11 @@ namespace ValheimCreative.Features.Creative
 
         internal static void DestroyCreativeVegetation(CreativeZone zone)
         {
+            DestroyCreativeVegetation(zone, zone.Radius);
+        }
+
+        internal static void DestroyCreativeVegetation(CreativeZone zone, float searchRadius)
+        {
             if (ZDOMan.instance == null)
             {
                 return;
@@ -97,7 +102,7 @@ namespace ValheimCreative.Features.Creative
             Stopwatch stopwatch = Stopwatch.StartNew();
             int scanned = 0;
             int removed = 0;
-            foreach (ZDO zdo in FindZoneZdos(zone))
+            foreach (ZDO zdo in FindZoneZdos(zone, searchRadius))
             {
                 scanned++;
                 if (zdo == null || !zdo.IsValid())
@@ -123,7 +128,7 @@ namespace ValheimCreative.Features.Creative
             if (removed > 0 || ModConfig.DebugLogging.Value)
             {
                 ValheimCreativePlugin.ModLogger.LogInfo(
-                    $"Creative vegetation cleanup for {zone.SlotId}: scanned={scanned}, removed={removed}, radius={zone.Radius:0.##}m, sectorArea={GetZoneSearchSectorArea(zone)}, elapsedMs={stopwatch.ElapsedMilliseconds}.");
+                    $"Creative vegetation cleanup for {zone.SlotId}: scanned={scanned}, removed={removed}, radius={Mathf.Max(1f, searchRadius):0.##}m, sectorArea={GetZoneSearchSectorArea(searchRadius)}, elapsedMs={stopwatch.ElapsedMilliseconds}.");
             }
         }
 
@@ -303,14 +308,19 @@ namespace ValheimCreative.Features.Creative
 
         private static IEnumerable<ZDO> FindZoneZdos(CreativeZone zone)
         {
+            return FindZoneZdos(zone, zone.Radius);
+        }
+
+        private static IEnumerable<ZDO> FindZoneZdos(CreativeZone zone, float searchRadius)
+        {
             if (ZDOMan.instance == null)
             {
                 yield break;
             }
 
             List<ZDO> objects = new();
-            float radius = Mathf.Max(1f, zone.Radius) + PlacementScanPadding;
-            int sectorArea = GetZoneSearchSectorArea(zone);
+            float radius = Mathf.Max(1f, searchRadius) + PlacementScanPadding;
+            int sectorArea = GetZoneSearchSectorArea(searchRadius);
             ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(zone.Position), sectorArea, 0, objects);
             foreach (ZDO zdo in objects.Distinct())
             {
@@ -327,8 +337,13 @@ namespace ValheimCreative.Features.Creative
 
         private static int GetZoneSearchSectorArea(CreativeZone zone)
         {
-            float radius = Mathf.Max(1f, zone.Radius) + PlacementScanPadding;
-            return Mathf.CeilToInt(radius / ZoneSystem.c_ZoneSize) + 1;
+            return GetZoneSearchSectorArea(zone.Radius);
+        }
+
+        private static int GetZoneSearchSectorArea(float radius)
+        {
+            float paddedRadius = Mathf.Max(1f, radius) + PlacementScanPadding;
+            return Mathf.CeilToInt(paddedRadius / ZoneSystem.c_ZoneSize) + 1;
         }
 
         private static IEnumerable<Vector2i> GetCreativeSectors(CreativeZone zone)
