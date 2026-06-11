@@ -22,6 +22,8 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> CreativeTerrainSourceMaxSpawnSlopeDegrees = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceValidationSampleSpacing = null!;
         internal static ConfigEntry<int> CreativeTerrainSourceSearchAttempts = null!;
+        internal static ConfigEntry<float> CreativeTerrainEdgeFalloffWidth = null!;
+        internal static ConfigEntry<float> CreativeTerrainEdgeFloorHeight = null!;
         internal static ConfigEntry<bool> EnableCreativeEnvironmentHotReload = null!;
         internal static ConfigEntry<float> CreativeRegenerateCooldownSeconds = null!;
         internal static ConfigEntry<bool> SpawnCreativeLocation = null!;
@@ -137,6 +139,18 @@ namespace ValheimCreative.Configuration
                 "CreativeTerrainSourceSearchAttempts",
                 2000,
                 "Maximum random candidate count when selecting a biome-matched source terrain patch in WorldSeedPatch mode.");
+
+            CreativeTerrainEdgeFalloffWidth = config.Bind(
+                "Creative",
+                "CreativeTerrainEdgeFalloffWidth",
+                16f,
+                "Width in meters of the WorldSeedPatch edge ring that blends sampled terrain down to CreativeTerrainEdgeFloorHeight. Set 0 to disable the edge wall.");
+
+            CreativeTerrainEdgeFloorHeight = config.Bind(
+                "Creative",
+                "CreativeTerrainEdgeFloorHeight",
+                0f,
+                "World Y height that the WorldSeedPatch edge falloff ring blends down to.");
 
             EnableCreativeEnvironmentHotReload = config.Bind(
                 "Creative",
@@ -279,6 +293,8 @@ namespace ValheimCreative.Configuration
         internal static float DefaultCreativeZoneRadiusValue => Mathf.Max(1f, DefaultCreativeZoneRadius.Value);
 
         internal static float DefaultSiegeZoneRadiusValue => Mathf.Max(1f, DefaultSiegeZoneRadius.Value);
+
+        internal static float CreativeTerrainEdgeFalloffWidthValue => Mathf.Max(0f, CreativeTerrainEdgeFalloffWidth.Value);
 
         private static Vector3 ParseVector3(string raw, Vector3 fallback)
         {

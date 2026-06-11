@@ -63,8 +63,21 @@ namespace ValheimCreative.Features.Creative
             }
 
             int marked = 0;
-            foreach (ZDO zdo in FindVegetationZdos(context.Zone, context.Preset.PrefabNames))
+            int removedFromEdge = 0;
+            foreach (ZDO zdo in FindVegetationZdos(context.Zone, context.Preset.PrefabNames, GetVegetationCleanupRadius(context.Zone)))
             {
+                if (Utils.DistanceXZ(zdo.GetPosition(), context.Zone.Position) > context.Zone.Radius)
+                {
+                    if (!zdo.IsOwner())
+                    {
+                        zdo.SetOwner(ZDOMan.GetSessionID());
+                    }
+
+                    ZDOMan.instance.DestroyZDO(zdo);
+                    removedFromEdge++;
+                    continue;
+                }
+
                 if (context.ExistingZdos.Contains(zdo.m_uid))
                 {
                     continue;
@@ -80,16 +93,16 @@ namespace ValheimCreative.Features.Creative
                 marked++;
             }
 
-            if (marked > 0)
+            if (marked > 0 || removedFromEdge > 0)
             {
                 ValheimCreativePlugin.ModLogger.LogInfo(
-                    $"Marked {marked} creative vegetation object(s) in {context.Zone.SlotId} using preset {context.Settings.VegetationPreset}.");
+                    $"Marked {marked} creative vegetation object(s) in {context.Zone.SlotId} using preset {context.Settings.VegetationPreset}; removedEdge={removedFromEdge}.");
             }
         }
 
         internal static void DestroyCreativeVegetation(CreativeZone zone)
         {
-            DestroyCreativeVegetation(zone, zone.Radius);
+            DestroyCreativeVegetation(zone, GetVegetationCleanupRadius(zone));
         }
 
         internal static void DestroyCreativeVegetation(CreativeZone zone, float searchRadius)
@@ -102,7 +115,8 @@ namespace ValheimCreative.Features.Creative
             Stopwatch stopwatch = Stopwatch.StartNew();
             int scanned = 0;
             int removed = 0;
-            foreach (ZDO zdo in FindZoneZdos(zone, searchRadius))
+            float cleanupRadius = GetVegetationCleanupRadius(searchRadius);
+            foreach (ZDO zdo in FindZoneZdos(zone, cleanupRadius))
             {
                 scanned++;
                 if (zdo == null || !zdo.IsValid())
@@ -128,7 +142,7 @@ namespace ValheimCreative.Features.Creative
             if (removed > 0 || ModConfig.DebugLogging.Value)
             {
                 ValheimCreativePlugin.ModLogger.LogInfo(
-                    $"Creative vegetation cleanup for {zone.SlotId}: scanned={scanned}, removed={removed}, radius={Mathf.Max(1f, searchRadius):0.##}m, sectorArea={GetZoneSearchSectorArea(searchRadius)}, elapsedMs={stopwatch.ElapsedMilliseconds}.");
+                    $"Creative vegetation cleanup for {zone.SlotId}: scanned={scanned}, removed={removed}, radius={cleanupRadius:0.##}m, sectorArea={GetZoneSearchSectorArea(cleanupRadius)}, elapsedMs={stopwatch.ElapsedMilliseconds}.");
             }
         }
 
@@ -243,7 +257,7 @@ namespace ValheimCreative.Features.Creative
         internal static bool TryMapToTerrainSource(float x, float z, out Vector2 source)
         {
             source = Vector2.zero;
-            if (!CreativeSessionManager.TryGetCreativeTerrainPatchAtPosition(new Vector3(x, 0f, z), out CreativeZone? zone) ||
+            if (!CreativeSessionManager.TryGetCreativeZoneAtPosition(new Vector3(x, 0f, z), out CreativeZone? zone) ||
                 zone == null ||
                 zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch ||
                 zone.TerrainSource == null)
@@ -291,7 +305,12 @@ namespace ValheimCreative.Features.Creative
 
         private static IEnumerable<ZDO> FindVegetationZdos(CreativeZone zone, HashSet<string> prefabNames)
         {
-            foreach (ZDO zdo in FindZoneZdos(zone))
+            return FindVegetationZdos(zone, prefabNames, zone.Radius);
+        }
+
+        private static IEnumerable<ZDO> FindVegetationZdos(CreativeZone zone, HashSet<string> prefabNames, float searchRadius)
+        {
+            foreach (ZDO zdo in FindZoneZdos(zone, searchRadius))
             {
                 if (zdo == null || !zdo.IsValid())
                 {
@@ -344,6 +363,16 @@ namespace ValheimCreative.Features.Creative
         {
             float paddedRadius = Mathf.Max(1f, radius) + PlacementScanPadding;
             return Mathf.CeilToInt(paddedRadius / ZoneSystem.c_ZoneSize) + 1;
+        }
+
+        private static float GetVegetationCleanupRadius(CreativeZone zone)
+        {
+            return GetVegetationCleanupRadius(zone.Radius);
+        }
+
+        private static float GetVegetationCleanupRadius(float radius)
+        {
+            return Mathf.Max(1f, radius) + ModConfig.CreativeTerrainEdgeFalloffWidthValue;
         }
 
         private static IEnumerable<Vector2i> GetCreativeSectors(CreativeZone zone)

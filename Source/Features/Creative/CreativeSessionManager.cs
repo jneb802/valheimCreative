@@ -580,7 +580,7 @@ namespace ValheimCreative.Features.Creative
 
         internal static float GetCreativeTerrainPatchHalfSize(CreativeZone zone)
         {
-            float radius = Mathf.Max(1f, zone.Radius);
+            float radius = Mathf.Max(1f, zone.Radius + ModConfig.CreativeTerrainEdgeFalloffWidthValue);
             float extraBeyondCenterSector = Mathf.Max(0f, radius - ZoneSystem.c_ZoneHalfSize);
             float sectorRings = Mathf.Ceil(extraBeyondCenterSector / ZoneSystem.c_ZoneSize);
             return ZoneSystem.c_ZoneHalfSize + sectorRings * ZoneSystem.c_ZoneSize;
@@ -1617,18 +1617,24 @@ namespace ValheimCreative.Features.Creative
                 return false;
             }
 
-            float halfSize = GetCreativeTerrainPatchHalfSize(zone);
+            float sampleExtent = Mathf.Max(1f, zone.Radius + ModConfig.CreativeTerrainEdgeFalloffWidthValue);
             float configuredSpacing = Mathf.Max(4f, ModConfig.CreativeTerrainSourceValidationSampleSpacing.Value);
-            int steps = Mathf.Max(1, Mathf.CeilToInt((halfSize * 2f) / configuredSpacing));
-            float spacing = halfSize * 2f / steps;
+            int steps = Mathf.Max(1, Mathf.CeilToInt((sampleExtent * 2f) / configuredSpacing));
+            float spacing = sampleExtent * 2f / steps;
             bool validatePatchSlope = ShouldValidateTerrainPatchSlope(targetBiome);
 
             for (int xIndex = 0; xIndex <= steps; xIndex++)
             {
-                float offsetX = -halfSize + xIndex * spacing;
+                float offsetX = -sampleExtent + xIndex * spacing;
                 for (int zIndex = 0; zIndex <= steps; zIndex++)
                 {
-                    float offsetZ = -halfSize + zIndex * spacing;
+                    float offsetZ = -sampleExtent + zIndex * spacing;
+                    float distance = Mathf.Sqrt(offsetX * offsetX + offsetZ * offsetZ);
+                    if (distance > sampleExtent)
+                    {
+                        continue;
+                    }
+
                     float sampleX = x + offsetX;
                     float sampleZ = z + offsetZ;
                     if (WorldGenerator.instance.GetBiome(sampleX, sampleZ) != targetBiome)
@@ -1642,7 +1648,6 @@ namespace ValheimCreative.Features.Creative
                         return false;
                     }
 
-                    float distance = Mathf.Sqrt(offsetX * offsetX + offsetZ * offsetZ);
                     if (validatePatchSlope && distance > 0.01f)
                     {
                         float slopeDegrees = Mathf.Atan2(Mathf.Abs(sampleHeight - centerHeight), distance) * Mathf.Rad2Deg;
