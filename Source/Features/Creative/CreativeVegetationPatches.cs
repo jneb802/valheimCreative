@@ -168,9 +168,9 @@ namespace ValheimCreative.Features.Creative
                 return AccessTools.Method(typeof(MineRock), "RPC_Hit");
             }
 
-            private static void Prefix(MineRock __instance, ref DropPatchState? __state)
+            private static void Prefix(MineRock __instance, HitData hit, ref DropPatchState? __state)
             {
-                __state = ReplaceDropsIfSuppressed(__instance, __instance.m_dropItems);
+                __state = ReplaceDropsIfSuppressed(__instance, __instance.m_dropItems, hit.m_point);
                 if (__state != null)
                 {
                     __instance.m_dropItems = EmptyDropTable;
@@ -194,9 +194,9 @@ namespace ValheimCreative.Features.Creative
                 return AccessTools.Method(typeof(MineRock5), "DamageArea");
             }
 
-            private static void Prefix(MineRock5 __instance, ref DropPatchState? __state)
+            private static void Prefix(MineRock5 __instance, HitData hit, ref DropPatchState? __state)
             {
-                __state = ReplaceDropsIfSuppressed(__instance, __instance.m_dropItems);
+                __state = ReplaceDropsIfSuppressed(__instance, __instance.m_dropItems, hit.m_point);
                 if (__state != null)
                 {
                     __instance.m_dropItems = EmptyDropTable;
@@ -215,6 +215,13 @@ namespace ValheimCreative.Features.Creative
         private static DropPatchState? ReplaceDropsIfSuppressed(Component component, DropTable dropTable)
         {
             return CreativeVegetationService.ShouldSuppressDrops(component)
+                ? new DropPatchState(dropTable)
+                : null;
+        }
+
+        private static DropPatchState? ReplaceDropsIfSuppressed(Component component, DropTable dropTable, Vector3 point)
+        {
+            return CreativeVegetationService.ShouldSuppressDrops(component, point)
                 ? new DropPatchState(dropTable)
                 : null;
         }

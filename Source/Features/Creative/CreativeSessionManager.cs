@@ -415,8 +415,12 @@ namespace ValheimCreative.Features.Creative
                 return Lines($"Creative zone {zone.SlotId} radius={FormatRadius(zone.Radius)}m.");
             }
 
-            zone.Radius = Mathf.Max(1f, radius.Value);
-            ApplyRadiusToZone(zone.OwnerPlayerId, zone.Radius);
+            if (!TryNormalizeCreativeZoneRadius(radius.Value, out float normalizedRadius, out string radiusError))
+            {
+                return Lines(radiusError);
+            }
+
+            ApplyRadiusToZone(zone.OwnerPlayerId, normalizedRadius);
             TryRefreshCreativeTerrainModifier(zone, out _);
             Save();
             ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {zone.SlotId} radius to {FormatRadius(zone.Radius)}m.");
@@ -446,19 +450,24 @@ namespace ValheimCreative.Features.Creative
                 return Lines("Only the creative zone owner can change its size.");
             }
 
-            if (!float.TryParse(rawRadius.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float radius) || radius <= 0f)
+            if (!float.TryParse(rawRadius.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float radius))
             {
                 return Lines("Radius must be a positive number.");
             }
 
-            ApplyRadiusToZone(session.OwnerPlayerId, radius);
+            if (!TryNormalizeCreativeZoneRadius(radius, out float normalizedRadius, out string radiusError))
+            {
+                return Lines(radiusError);
+            }
+
+            ApplyRadiusToZone(session.OwnerPlayerId, normalizedRadius);
             if (ZonesByOwnerId.TryGetValue(session.OwnerPlayerId, out CreativeZone zone))
             {
                 TryRefreshCreativeTerrainModifier(zone, out _);
             }
             Save();
-            ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {session.SlotId} radius to {FormatRadius(radius)}m from chat.");
-            return Lines($"Creative zone radius set to {FormatRadius(radius)}m.");
+            ValheimCreativePlugin.ModLogger.LogInfo($"Set creative zone {session.SlotId} radius to {FormatRadius(normalizedRadius)}m from chat.");
+            return Lines($"Creative zone radius set to {FormatRadius(normalizedRadius)}m.");
         }
 
         internal static IEnumerable<string> GetOrSetBlueprintLoadOffset(ZDO playerZdo, string rawArgument)
@@ -1105,7 +1114,7 @@ namespace ValheimCreative.Features.Creative
 
         private static void ApplyRadiusToZone(long ownerPlayerId, float radius)
         {
-            float normalizedRadius = Mathf.Max(1f, radius);
+            float normalizedRadius = ModConfig.ClampCreativeZoneRadius(radius);
             if (ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
             {
                 float previousRadius = zone.Radius;
@@ -1135,6 +1144,27 @@ namespace ValheimCreative.Features.Creative
                 CreativeBiomeService.SendOverride(activeSession);
                 CreativeCommandZoneGuard.SendState(activeSession);
             }
+        }
+
+        private static bool TryNormalizeCreativeZoneRadius(float radius, out float normalizedRadius, out string error)
+        {
+            normalizedRadius = 0f;
+            error = string.Empty;
+            if (radius <= 0f || float.IsNaN(radius) || float.IsInfinity(radius))
+            {
+                error = "Radius must be a positive number.";
+                return false;
+            }
+
+            float maxRadius = ModConfig.MaxCreativeZoneRadiusValue;
+            if (radius > maxRadius)
+            {
+                error = $"Radius {FormatRadius(radius)}m exceeds MaxCreativeZoneRadius {FormatRadius(maxRadius)}m.";
+                return false;
+            }
+
+            normalizedRadius = ModConfig.ClampCreativeZoneRadius(radius);
+            return true;
         }
 
         internal static float GetTerrainModifierRadiusAtPosition(Vector3 position)

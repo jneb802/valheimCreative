@@ -6,7 +6,7 @@ namespace ValheimCreative.Features.Creative
 {
     internal static class CreativeBiomeService
     {
-        private const int ProtocolVersion = 4;
+        private const int ProtocolVersion = 5;
         private const string OverrideRpcName = "DiscordTools_CreativeBiomeOverride";
 
         internal static Heightmap.Biome DefaultBiome =>
@@ -89,6 +89,7 @@ namespace ValheimCreative.Features.Creative
             package.Write(GetTerrainPatchHalfSize(center, terrainSource));
             package.Write(ModConfig.CreativeTerrainEdgeFalloffWidthValue);
             package.Write(ModConfig.CreativeTerrainEdgeFloorHeight.Value);
+            package.Write(GetSuppressVegetationDrops(center));
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, OverrideRpcName, package);
         }
 
@@ -102,6 +103,18 @@ namespace ValheimCreative.Features.Creative
             }
 
             return CreativeSessionManager.GetCreativeTerrainPatchHalfSize(zone);
+        }
+
+        private static bool GetSuppressVegetationDrops(Vector3 center)
+        {
+            if (!CreativeSessionManager.TryGetCreativeZoneAtPosition(center, out CreativeZone? zone) ||
+                zone == null)
+            {
+                return false;
+            }
+
+            CreativeEnvironmentSettings settings = CreativeEnvironmentPolicy.Resolve(zone);
+            return !settings.VegetationDropsEnabled;
         }
     }
 }

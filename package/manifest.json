@@ -1,6 +1,6 @@
 {
   "name": "valheimCreative",
-  "version_number": "0.2.18",
+  "version_number": "0.2.24",
   "website_url": "https://github.com/jneb802/valheimCreative",
   "description": "Private creative build zones for Valheim dedicated servers.",
   "dependencies": [

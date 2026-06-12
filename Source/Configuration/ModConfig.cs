@@ -35,6 +35,7 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> DeathRecoveryCheckSeconds = null!;
         internal static ConfigEntry<string> DefaultCreativeBiome = null!;
         internal static ConfigEntry<float> DefaultCreativeZoneRadius = null!;
+        internal static ConfigEntry<float> MaxCreativeZoneRadius = null!;
         internal static ConfigEntry<string> SessionFile = null!;
         internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<string> BlueprintDirectory = null!;
@@ -218,6 +219,12 @@ namespace ValheimCreative.Configuration
                 128f,
                 "Default creative zone footprint radius in meters. Used for biome paint, reset cleanup, and blueprint save range.");
 
+            MaxCreativeZoneRadius = config.Bind(
+                "Creative",
+                "MaxCreativeZoneRadius",
+                128f,
+                "Maximum creative zone footprint radius in meters. Admin size commands above this value are rejected to avoid expensive terrain and vegetation generation.");
+
             SessionFile = config.Bind(
                 "Creative",
                 "SessionFile",
@@ -290,7 +297,14 @@ namespace ValheimCreative.Configuration
 
         internal static Vector3 SiegePositionValue => ParseVector3(SiegePosition.Value, new Vector3(0f, 45f, -16000f));
 
-        internal static float DefaultCreativeZoneRadiusValue => Mathf.Max(1f, DefaultCreativeZoneRadius.Value);
+        internal static float DefaultCreativeZoneRadiusValue => ClampCreativeZoneRadius(DefaultCreativeZoneRadius.Value);
+
+        internal static float MaxCreativeZoneRadiusValue => Mathf.Max(1f, MaxCreativeZoneRadius.Value);
+
+        internal static float ClampCreativeZoneRadius(float radius)
+        {
+            return Mathf.Clamp(radius, 1f, MaxCreativeZoneRadiusValue);
+        }
 
         internal static float DefaultSiegeZoneRadiusValue => Mathf.Max(1f, DefaultSiegeZoneRadius.Value);
 

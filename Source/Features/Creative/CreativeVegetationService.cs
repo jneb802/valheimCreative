@@ -12,6 +12,7 @@ namespace ValheimCreative.Features.Creative
         internal const string ZdoVegetationMarker = "valheimCreative.vegetation";
         internal const string ZdoVegetationSlotId = "valheimCreative.vegetationSlot";
         private const float PlacementScanPadding = 64f;
+        private static int LastPlacementMarkedCount { get; set; }
 
         internal static bool TryCreatePlacementContext(
             Vector3 zoneCenter,
@@ -93,6 +94,7 @@ namespace ValheimCreative.Features.Creative
                 marked++;
             }
 
+            LastPlacementMarkedCount = marked;
             if (marked > 0 || removedFromEdge > 0)
             {
                 ValheimCreativePlugin.ModLogger.LogInfo(
@@ -195,20 +197,16 @@ namespace ValheimCreative.Features.Creative
                 Vector3 zonePosition = ZoneSystem.GetZonePos(sector);
                 List<ZoneSystem.ClearArea> clearAreas = BuildClearAreas(zoneSystem, sector);
                 zoneSystem.m_tempSpawnedObjects.Clear();
+                LastPlacementMarkedCount = 0;
                 zoneSystem.PlaceVegetation(
                     sector,
                     zonePosition,
                     root.transform,
                     heightmap,
                     clearAreas,
-                    ZoneSystem.SpawnMode.Ghost,
+                    ZoneSystem.SpawnMode.Full,
                     zoneSystem.m_tempSpawnedObjects);
-                spawnedObjects += zoneSystem.m_tempSpawnedObjects.Count;
-                foreach (GameObject spawnedObject in zoneSystem.m_tempSpawnedObjects)
-                {
-                    UnityEngine.Object.Destroy(spawnedObject);
-                }
-
+                spawnedObjects += LastPlacementMarkedCount;
                 zoneSystem.m_tempSpawnedObjects.Clear();
                 if (temporaryRoot != null)
                 {
@@ -227,15 +225,25 @@ namespace ValheimCreative.Features.Creative
                 return false;
             }
 
+            return ShouldSuppressDrops(component, component.transform.position);
+        }
+
+        internal static bool ShouldSuppressDrops(Component component, Vector3 point)
+        {
+            if (component == null)
+            {
+                return false;
+            }
+
             ZNetView netView = component.GetComponent<ZNetView>() ?? component.GetComponentInParent<ZNetView>();
             ZDO? zdo = netView != null ? netView.GetZDO() : null;
             if (zdo != null && IsMarkedCreativeVegetation(zdo))
             {
-                CreativeEnvironmentSettings settings = CreativeEnvironmentPolicy.ResolveAtPosition(component.transform.position);
+                CreativeEnvironmentSettings settings = CreativeEnvironmentPolicy.ResolveAtPosition(point);
                 return !settings.VegetationDropsEnabled;
             }
 
-            if (!CreativeSessionManager.TryGetCreativeZoneAtPosition(component.transform.position, out CreativeZone? zone) || zone == null)
+            if (!CreativeSessionManager.TryGetCreativeZoneAtPosition(point, out CreativeZone? zone) || zone == null)
             {
                 return false;
             }
