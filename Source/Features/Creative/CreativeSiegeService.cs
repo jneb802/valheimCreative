@@ -194,8 +194,7 @@ namespace ValheimCreative.Features.Creative
                 definition.GrantCreativeKeys);
 
             CreativeSessionManager.SetSession(session);
-            CreativeSessionManager.SendSessionKeys(session);
-            CreativeBiomeService.SendOverride(session);
+            CreativeSessionManager.SendPlayerCreativeZoneState(session);
             CreativeSessionManager.TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             CreativeSessionManager.Save();
 

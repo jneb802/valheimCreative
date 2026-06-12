@@ -5,9 +5,9 @@ using UnityEngine;
 
 namespace ValheimCreative.Features.Creative
 {
-    internal static class CreativeCommandZoneGuard
+    internal static class CreativePlayerZoneStateService
     {
-        internal const string StateRpcName = "PraetorisClient_CreativeCommandZoneState";
+        internal const string StateRpcName = "PraetorisClient_CreativePlayerZoneState";
         internal const int ProtocolVersion = 1;
         internal const string DeniedMessage = "Creative commands can only be used inside your creative zone.";
         private static readonly Dictionary<long, string> SentStateKeyByPeerId = new();
@@ -66,7 +66,7 @@ namespace ValheimCreative.Features.Creative
 
         internal static bool IsProtectedCommand(string rawCommand)
         {
-            string normalized = NormalizeCommand(rawCommand);
+            string normalized = CreativeCommandGuardPolicy.NormalizeCommand(rawCommand);
             return CreativeCommandGuardPolicy.IsProtectedCommand(normalized);
         }
 
@@ -117,7 +117,7 @@ namespace ValheimCreative.Features.Creative
             package.Write(playerId);
             package.Write(slotId ?? string.Empty);
             package.Write(CreativeCommandGuardPolicy.Enabled);
-            package.Write(CreativeCommandGuardPolicy.CommandPrefixPayload);
+            package.Write(CreativeCommandGuardPolicy.CommandRulePayload);
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, StateRpcName, package);
             SentStateKeyByPeerId[peerId] = stateKey;
         }
@@ -168,18 +168,7 @@ namespace ValheimCreative.Features.Creative
                 playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 slotId ?? string.Empty,
                 CreativeCommandGuardPolicy.Enabled ? "1" : "0",
-                CreativeCommandGuardPolicy.CommandPrefixPayload);
-        }
-
-        private static string NormalizeCommand(string rawCommand)
-        {
-            if (string.IsNullOrWhiteSpace(rawCommand))
-            {
-                return string.Empty;
-            }
-
-            string[] parts = rawCommand.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length == 0 ? string.Empty : parts[0].ToLowerInvariant();
+                CreativeCommandGuardPolicy.CommandRulePayload);
         }
 
         [HarmonyPatch(typeof(ZNet), nameof(ZNet.RPC_RemoteCommand))]

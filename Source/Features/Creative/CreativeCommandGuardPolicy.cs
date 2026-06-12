@@ -12,11 +12,12 @@ namespace ValheimCreative.Features.Creative
     {
         private const string FileName = "valheimCreative.command-guard.yaml";
         private const string DefaultFileContents =
-            "# Command names and prefixes that only work inside the player's active creative zone.\n" +
-            "# Example: tweak_ protects tweak_spawner, tweak_altar, and other tweak commands.\n" +
+            "# Command names and wildcard rules that only work inside the player's active creative zone.\n" +
+            "# Exact entries match the first command token only. Example: tod does not match today.\n" +
+            "# Wildcards use *. Example: tweak_* protects tweak_spawner, tweak_altar, and other tweak commands.\n" +
             "enabled: true\n" +
             "commands:\n" +
-            "  - tweak_\n";
+            "  - tweak_*\n";
 
         private static readonly IDeserializer Deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -27,8 +28,8 @@ namespace ValheimCreative.Features.Creative
         private static string _policyKey = string.Empty;
 
         internal static bool Enabled { get; private set; } = true;
-        internal static IReadOnlyList<string> CommandPrefixes { get; private set; } = new[] { "tweak_" };
-        internal static string CommandPrefixPayload => string.Join(",", CommandPrefixes);
+        internal static IReadOnlyList<string> CommandRules { get; private set; } = new[] { "tweak_*" };
+        internal static string CommandRulePayload => string.Join(",", CommandRules);
         internal static string PolicyKey => _policyKey;
 
         internal static void Initialize()
@@ -61,9 +62,9 @@ namespace ValheimCreative.Features.Creative
                 return false;
             }
 
-            foreach (string protectedCommand in CommandPrefixes)
+            foreach (string protectedCommand in CommandRules)
             {
-                if (normalizedCommand.StartsWith(protectedCommand, StringComparison.Ordinal))
+                if (MatchesRule(normalizedCommand, protectedCommand))
                 {
                     return true;
                 }
@@ -85,13 +86,13 @@ namespace ValheimCreative.Features.Creative
                 bool changed = force || newPolicyKey != _policyKey;
 
                 Enabled = data.Enabled;
-                CommandPrefixes = commands;
+                CommandRules = commands;
                 _lastWriteTimeUtc = writeTimeUtc;
                 _policyKey = newPolicyKey;
 
                 if (changed)
                 {
-                    ValheimCreativePlugin.ModLogger.LogInfo($"Loaded creative command guard policy from {path}: enabled={Enabled}, commands={CommandPrefixPayload}.");
+                    ValheimCreativePlugin.ModLogger.LogInfo($"Loaded creative command guard policy from {path}: enabled={Enabled}, commands={CommandRulePayload}.");
                 }
 
                 return changed;
@@ -106,6 +107,60 @@ namespace ValheimCreative.Features.Creative
                 ValheimCreativePlugin.ModLogger.LogWarning($"Failed to load creative command guard policy from {path}: {ex.Message}");
                 return false;
             }
+        }
+
+        private static bool MatchesRule(string normalizedCommand, string rule)
+        {
+            if (rule.IndexOf('*') < 0)
+            {
+                return string.Equals(normalizedCommand, rule, StringComparison.Ordinal);
+            }
+
+            return MatchesWildcard(normalizedCommand, rule);
+        }
+
+        private static bool MatchesWildcard(string value, string pattern)
+        {
+            int valueIndex = 0;
+            int patternIndex = 0;
+            int starIndex = -1;
+            int retryValueIndex = 0;
+
+            while (valueIndex < value.Length)
+            {
+                if (patternIndex < pattern.Length &&
+                    pattern[patternIndex] == value[valueIndex])
+                {
+                    valueIndex++;
+                    patternIndex++;
+                    continue;
+                }
+
+                if (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+                {
+                    starIndex = patternIndex;
+                    retryValueIndex = valueIndex;
+                    patternIndex++;
+                    continue;
+                }
+
+                if (starIndex >= 0)
+                {
+                    patternIndex = starIndex + 1;
+                    retryValueIndex++;
+                    valueIndex = retryValueIndex;
+                    continue;
+                }
+
+                return false;
+            }
+
+            while (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+            {
+                patternIndex++;
+            }
+
+            return patternIndex == pattern.Length;
         }
 
         private static IEnumerable<string> NormalizeCommands(IEnumerable<string>? commands)
@@ -140,7 +195,48 @@ namespace ValheimCreative.Features.Creative
             if (!File.Exists(path))
             {
                 File.WriteAllText(path, DefaultFileContents);
+                return;
             }
+
+            MigrateLegacyDefaultWildcard(path);
+        }
+
+        private static void MigrateLegacyDefaultWildcard(string path)
+        {
+            string[] lines = File.ReadAllLines(path);
+            bool changed = false;
+            for (int index = 0; index < lines.Length; index++)
+            {
+                string line = lines[index];
+                if (!string.Equals(line.Trim(), "- tweak_", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int dashIndex = line.IndexOf('-');
+                string indent = dashIndex > 0 ? line.Substring(0, dashIndex) : string.Empty;
+                lines[index] = indent + "- tweak_*";
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            File.WriteAllText(path, string.Join(Environment.NewLine, lines) + Environment.NewLine);
+            ValheimCreativePlugin.ModLogger.LogInfo($"Migrated creative command guard wildcard entries in {path}.");
+        }
+
+        internal static string NormalizeCommand(string rawCommand)
+        {
+            if (string.IsNullOrWhiteSpace(rawCommand))
+            {
+                return string.Empty;
+            }
+
+            string[] parts = rawCommand.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length == 0 ? string.Empty : parts[0].ToLowerInvariant();
         }
 
         private static string GetPath()
@@ -151,7 +247,7 @@ namespace ValheimCreative.Features.Creative
         private sealed class CreativeCommandGuardYaml
         {
             public bool Enabled { get; set; } = true;
-            public List<string> Commands { get; set; } = new() { "tweak_" };
+            public List<string> Commands { get; set; } = new() { "tweak_*" };
         }
     }
 }
