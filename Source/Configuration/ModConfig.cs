@@ -18,7 +18,14 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> CreativeTerrainSourceMinDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMaxDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMinHeight = null!;
+        internal static ConfigEntry<string> CreativeTerrainSourceMinHeightByBiome = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceMaxSpawnSlopeDegrees = null!;
+        internal static ConfigEntry<float> CreativeTerrainSourceValidationSampleSpacing = null!;
         internal static ConfigEntry<int> CreativeTerrainSourceSearchAttempts = null!;
+        internal static ConfigEntry<float> CreativeTerrainEdgeFalloffWidth = null!;
+        internal static ConfigEntry<float> CreativeTerrainEdgeFloorHeight = null!;
+        internal static ConfigEntry<bool> EnableCreativeEnvironmentHotReload = null!;
+        internal static ConfigEntry<float> CreativeRegenerateCooldownSeconds = null!;
         internal static ConfigEntry<bool> SpawnCreativeLocation = null!;
         internal static ConfigEntry<string> CreativeLocationPrefab = null!;
         internal static ConfigEntry<bool> IncludeNoWorkbench = null!;
@@ -28,6 +35,7 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<float> DeathRecoveryCheckSeconds = null!;
         internal static ConfigEntry<string> DefaultCreativeBiome = null!;
         internal static ConfigEntry<float> DefaultCreativeZoneRadius = null!;
+        internal static ConfigEntry<float> MaxCreativeZoneRadius = null!;
         internal static ConfigEntry<string> SessionFile = null!;
         internal static ConfigEntry<string> ZoneFile = null!;
         internal static ConfigEntry<string> BlueprintDirectory = null!;
@@ -106,14 +114,56 @@ namespace ValheimCreative.Configuration
             CreativeTerrainSourceMinHeight = config.Bind(
                 "Creative",
                 "CreativeTerrainSourceMinHeight",
-                1f,
-                "Minimum source terrain height for random terrain source patch selection in WorldSeedPatch mode.");
+                32f,
+                "Fallback minimum source terrain height for random terrain source patch selection in WorldSeedPatch mode. Biome-specific values override this.");
+
+            CreativeTerrainSourceMinHeightByBiome = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMinHeightByBiome",
+                "Meadows=32,BlackForest=35,Swamp=31,Mountain=90,Plains=32,Mistlands=45,AshLands=32,DeepNorth=35",
+                "Comma-separated biome minimum source heights for WorldSeedPatch mode, in world Y units. Example: Meadows=32,Mountain=90. Missing biomes use CreativeTerrainSourceMinHeight.");
+
+            CreativeTerrainSourceMaxSpawnSlopeDegrees = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceMaxSpawnSlopeDegrees",
+                30f,
+                "Maximum sampled slope in degrees around the creative zone spawn point when selecting a WorldSeedPatch terrain source. Higher values allow steeper terrain.");
+
+            CreativeTerrainSourceValidationSampleSpacing = config.Bind(
+                "Creative",
+                "CreativeTerrainSourceValidationSampleSpacing",
+                16f,
+                "Sample spacing in meters for validating the copied WorldSeedPatch terrain footprint. Lower values are stricter and more expensive.");
 
             CreativeTerrainSourceSearchAttempts = config.Bind(
                 "Creative",
                 "CreativeTerrainSourceSearchAttempts",
                 2000,
                 "Maximum random candidate count when selecting a biome-matched source terrain patch in WorldSeedPatch mode.");
+
+            CreativeTerrainEdgeFalloffWidth = config.Bind(
+                "Creative",
+                "CreativeTerrainEdgeFalloffWidth",
+                16f,
+                "Width in meters of the WorldSeedPatch edge ring that blends sampled terrain down to CreativeTerrainEdgeFloorHeight. Set 0 to disable the edge wall.");
+
+            CreativeTerrainEdgeFloorHeight = config.Bind(
+                "Creative",
+                "CreativeTerrainEdgeFloorHeight",
+                0f,
+                "World Y height that the WorldSeedPatch edge falloff ring blends down to.");
+
+            EnableCreativeEnvironmentHotReload = config.Bind(
+                "Creative",
+                "EnableCreativeEnvironmentHotReload",
+                false,
+                "Reloads valheimCreative.environment.yaml while the server is running. Disabled by default because vegetation refresh scans creative zone objects.");
+
+            CreativeRegenerateCooldownSeconds = config.Bind(
+                "Creative",
+                "CreativeRegenerateCooldownSeconds",
+                300f,
+                "Minimum seconds between player-triggered creative zone reset or biome regeneration actions per creative zone owner. Set 0 to disable.");
 
             SpawnCreativeLocation = config.Bind(
                 "Creative",
@@ -168,6 +218,12 @@ namespace ValheimCreative.Configuration
                 "DefaultCreativeZoneRadius",
                 128f,
                 "Default creative zone footprint radius in meters. Used for biome paint, reset cleanup, and blueprint save range.");
+
+            MaxCreativeZoneRadius = config.Bind(
+                "Creative",
+                "MaxCreativeZoneRadius",
+                128f,
+                "Maximum creative zone footprint radius in meters. Admin size commands above this value are rejected to avoid expensive terrain and vegetation generation.");
 
             SessionFile = config.Bind(
                 "Creative",
@@ -241,9 +297,18 @@ namespace ValheimCreative.Configuration
 
         internal static Vector3 SiegePositionValue => ParseVector3(SiegePosition.Value, new Vector3(0f, 45f, -16000f));
 
-        internal static float DefaultCreativeZoneRadiusValue => Mathf.Max(1f, DefaultCreativeZoneRadius.Value);
+        internal static float DefaultCreativeZoneRadiusValue => ClampCreativeZoneRadius(DefaultCreativeZoneRadius.Value);
+
+        internal static float MaxCreativeZoneRadiusValue => Mathf.Max(1f, MaxCreativeZoneRadius.Value);
+
+        internal static float ClampCreativeZoneRadius(float radius)
+        {
+            return Mathf.Clamp(radius, 1f, MaxCreativeZoneRadiusValue);
+        }
 
         internal static float DefaultSiegeZoneRadiusValue => Mathf.Max(1f, DefaultSiegeZoneRadius.Value);
+
+        internal static float CreativeTerrainEdgeFalloffWidthValue => Mathf.Max(0f, CreativeTerrainEdgeFalloffWidth.Value);
 
         private static Vector3 ParseVector3(string raw, Vector3 fallback)
         {

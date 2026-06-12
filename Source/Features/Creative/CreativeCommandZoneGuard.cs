@@ -10,12 +10,12 @@ namespace ValheimCreative.Features.Creative
         internal const string StateRpcName = "PraetorisClient_CreativeCommandZoneState";
         internal const int ProtocolVersion = 1;
         internal const string DeniedMessage = "Creative commands can only be used inside your creative zone.";
-        private static readonly Dictionary<long, string> SentPolicyByPeerId = new();
+        private static readonly Dictionary<long, string> SentStateKeyByPeerId = new();
 
         internal static void Initialize()
         {
             CreativeCommandGuardPolicy.Initialize();
-            SentPolicyByPeerId.Clear();
+            SentStateKeyByPeerId.Clear();
         }
 
         internal static void Update()
@@ -28,7 +28,7 @@ namespace ValheimCreative.Features.Creative
             bool policyChanged = CreativeCommandGuardPolicy.Update();
             if (policyChanged)
             {
-                SentPolicyByPeerId.Clear();
+                SentStateKeyByPeerId.Clear();
             }
 
             SyncPolicyToReadyPeers();
@@ -47,12 +47,6 @@ namespace ValheimCreative.Features.Creative
 
                 ZDO playerZdo = ZDOMan.instance.GetZDO(peer.m_characterID);
                 if (playerZdo == null)
-                {
-                    continue;
-                }
-
-                if (SentPolicyByPeerId.TryGetValue(peer.m_uid, out string policyKey) &&
-                    policyKey == CreativeCommandGuardPolicy.PolicyKey)
                 {
                     continue;
                 }
@@ -107,6 +101,13 @@ namespace ValheimCreative.Features.Creative
                 return;
             }
 
+            string stateKey = BuildStateKey(enabled, center, radius, ownerPlayerId, playerId, slotId);
+            if (SentStateKeyByPeerId.TryGetValue(peerId, out string sentStateKey) &&
+                sentStateKey == stateKey)
+            {
+                return;
+            }
+
             ZPackage package = new();
             package.Write(ProtocolVersion);
             package.Write(enabled);
@@ -118,7 +119,7 @@ namespace ValheimCreative.Features.Creative
             package.Write(CreativeCommandGuardPolicy.Enabled);
             package.Write(CreativeCommandGuardPolicy.CommandPrefixPayload);
             ZRoutedRpc.instance.InvokeRoutedRPC(peerId, StateRpcName, package);
-            SentPolicyByPeerId[peerId] = CreativeCommandGuardPolicy.PolicyKey;
+            SentStateKeyByPeerId[peerId] = stateKey;
         }
 
         private static void PruneDisconnectedPeers()
@@ -133,7 +134,7 @@ namespace ValheimCreative.Features.Creative
             }
 
             List<long> stalePeerIds = new();
-            foreach (long peerId in SentPolicyByPeerId.Keys)
+            foreach (long peerId in SentStateKeyByPeerId.Keys)
             {
                 if (!connectedPeerIds.Contains(peerId))
                 {
@@ -143,8 +144,31 @@ namespace ValheimCreative.Features.Creative
 
             foreach (long peerId in stalePeerIds)
             {
-                SentPolicyByPeerId.Remove(peerId);
+                SentStateKeyByPeerId.Remove(peerId);
             }
+        }
+
+        private static string BuildStateKey(
+            bool enabled,
+            Vector3 center,
+            float radius,
+            long ownerPlayerId,
+            long playerId,
+            string slotId)
+        {
+            return string.Join(
+                "|",
+                CreativeCommandGuardPolicy.PolicyKey,
+                enabled ? "1" : "0",
+                center.x.ToString("G9", System.Globalization.CultureInfo.InvariantCulture),
+                center.y.ToString("G9", System.Globalization.CultureInfo.InvariantCulture),
+                center.z.ToString("G9", System.Globalization.CultureInfo.InvariantCulture),
+                Mathf.Max(0f, radius).ToString("G9", System.Globalization.CultureInfo.InvariantCulture),
+                ownerPlayerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                slotId ?? string.Empty,
+                CreativeCommandGuardPolicy.Enabled ? "1" : "0",
+                CreativeCommandGuardPolicy.CommandPrefixPayload);
         }
 
         private static string NormalizeCommand(string rawCommand)

@@ -272,7 +272,7 @@ namespace ValheimCreative.Features.Creative
 
         private static float RadiusOrDefault(float radius, float fallback)
         {
-            return radius > 0f ? radius : fallback;
+            return ModConfig.ClampCreativeZoneRadius(radius > 0f ? radius : fallback);
         }
 
         private static Heightmap.Biome ParseBiome(string raw)
