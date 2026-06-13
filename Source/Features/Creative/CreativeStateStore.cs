@@ -202,6 +202,9 @@ namespace ValheimCreative.Features.Creative
             [JsonProperty("terrainSourceWorldSeedName")]
             public string TerrainSourceWorldSeedName { get; set; } = string.Empty;
 
+            [JsonProperty("poiName")]
+            public string PoiName { get; set; } = string.Empty;
+
             public CreativeZone ToZone()
             {
                 CreativeTerrainSource? terrainSource = null;
@@ -223,7 +226,8 @@ namespace ValheimCreative.Features.Creative
                     ParseBiome(Biome),
                     RadiusOrDefault(Radius, ModConfig.DefaultCreativeZoneRadiusValue),
                     ParseTerrainMode(TerrainMode),
-                    terrainSource);
+                    terrainSource,
+                    PoiName ?? string.Empty);
             }
 
             public static ZoneRecord FromZone(CreativeZone zone)
@@ -242,7 +246,8 @@ namespace ValheimCreative.Features.Creative
                     TerrainSourceCenter = terrainSource != null ? Format(terrainSource.Center) : string.Empty,
                     TerrainSourceBiome = terrainSource != null ? terrainSource.Biome.ToString() : string.Empty,
                     TerrainSourceWorldSeed = terrainSource?.WorldSeed ?? 0,
-                    TerrainSourceWorldSeedName = terrainSource?.WorldSeedName ?? string.Empty
+                    TerrainSourceWorldSeedName = terrainSource?.WorldSeedName ?? string.Empty,
+                    PoiName = zone.PoiName
                 };
             }
         }
@@ -272,11 +277,16 @@ namespace ValheimCreative.Features.Creative
 
         private static float RadiusOrDefault(float radius, float fallback)
         {
-            return ModConfig.ClampCreativeZoneRadius(radius > 0f ? radius : fallback);
+            return Mathf.Max(1f, radius > 0f ? radius : fallback);
         }
 
         private static Heightmap.Biome ParseBiome(string raw)
         {
+            if (raw.Trim().Equals("none", StringComparison.OrdinalIgnoreCase))
+            {
+                return Heightmap.Biome.None;
+            }
+
             return CreativeBiomeService.TryParseBiome(raw, out Heightmap.Biome biome)
                 ? biome
                 : CreativeBiomeService.DefaultBiome;

@@ -14,58 +14,7 @@ namespace ValheimCreative.Features.Creative
     internal static class CreativeEnvironmentPolicy
     {
         private const string FileName = "valheimCreative.environment.yaml";
-        private const string VanillaPresetName = "Vanilla";
-        private const string DefaultFileContents =
-            "# Creative terrain and vegetation policy.\n" +
-            "# Resolution order: defaults -> biomes.<activeBiome> -> zones.<slotId>.\n" +
-            "# Vegetation requires terrain. If terrain is disabled, vegetation is forced off.\n" +
-            "defaults:\n" +
-            "  terrain:\n" +
-            "    enabled: true\n" +
-            "    mode: WorldSeedPatch\n" +
-            "  vegetation:\n" +
-            "    enabled: true\n" +
-            "    preset: Vanilla\n" +
-            "    dropsEnabled: false\n" +
-            "\n" +
-            "biomes:\n" +
-            "  Meadows:\n" +
-            "    vegetation:\n" +
-            "      preset: Vanilla\n" +
-            "  BlackForest:\n" +
-            "    vegetation:\n" +
-            "      preset: Vanilla\n" +
-            "  Swamp:\n" +
-            "    vegetation:\n" +
-            "      preset: Vanilla\n" +
-            "  Mountain:\n" +
-            "    vegetation:\n" +
-            "      preset: Vanilla\n" +
-            "  Plains:\n" +
-            "    vegetation:\n" +
-            "      preset: Vanilla\n" +
-            "\n" +
-            "zones: {}\n" +
-            "# Example per-zone override:\n" +
-            "# zones:\n" +
-            "#   creative_000:\n" +
-            "#     terrain:\n" +
-            "#       enabled: true\n" +
-            "#       mode: WorldSeedPatch\n" +
-            "#     vegetation:\n" +
-            "#       enabled: true\n" +
-            "#       preset: sparseMeadows\n" +
-            "#       dropsEnabled: false\n" +
-            "\n" +
-            "presets:\n" +
-            "  sparseMeadows:\n" +
-            "    inherit: Meadows\n" +
-            "    entries:\n" +
-            "      - prefab: Beech1\n" +
-            "        max: 3\n" +
-            "        groupRadius: 8\n" +
-            "      - prefab: RaspberryBush\n" +
-            "        enabled: false\n";
+        internal const string DefaultPresetName = "defaultMeadows";
 
         private static readonly IDeserializer Deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -104,8 +53,9 @@ namespace ValheimCreative.Features.Creative
             CreativeEnvironmentSettings settings = CreativeEnvironmentSettings.FromYaml(_policy.Defaults);
             ApplyBiome(settings, zone.Biome);
             ApplyZone(settings, zone.SlotId);
+            settings.TerrainMode = zone.TerrainMode;
 
-            if (!settings.TerrainEnabled || settings.TerrainMode != CreativeTerrainMode.WorldSeedPatch)
+            if (!settings.TerrainEnabled || zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch)
             {
                 settings.VegetationEnabled = false;
             }
@@ -126,12 +76,9 @@ namespace ValheimCreative.Features.Creative
         internal static bool TryGetPreset(string presetName, Heightmap.Biome activeBiome, out CreativeVegetationPreset preset, out string error)
         {
             string normalizedPresetName = NormalizeName(presetName);
-            if (string.IsNullOrEmpty(normalizedPresetName) ||
-                normalizedPresetName.Equals(NormalizeName(VanillaPresetName), StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(normalizedPresetName))
             {
-                preset = CreativeVegetationPreset.Vanilla(activeBiome);
-                error = string.Empty;
-                return true;
+                normalizedPresetName = NormalizeName(DefaultPresetName);
             }
 
             HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
@@ -147,7 +94,7 @@ namespace ValheimCreative.Features.Creative
             out CreativeVegetationPreset preset,
             out string error)
         {
-            preset = CreativeVegetationPreset.Vanilla(activeBiome);
+            preset = CreativeVegetationPreset.Empty(activeBiome);
             error = string.Empty;
 
             if (!seen.Add(presetName))
@@ -165,15 +112,8 @@ namespace ValheimCreative.Features.Creative
             }
 
             string inherit = NormalizeName(presetYaml.Inherit);
-            if (string.IsNullOrEmpty(inherit) || inherit.Equals(NormalizeName(VanillaPresetName), StringComparison.OrdinalIgnoreCase))
-            {
-                preset = CreativeVegetationPreset.Vanilla(activeBiome);
-            }
-            else if (CreativeBiomeService.TryParseBiome(inherit, out Heightmap.Biome inheritBiome))
-            {
-                preset = CreativeVegetationPreset.Vanilla(inheritBiome);
-            }
-            else if (!TryBuildPreset(inherit, activeBiome, seen, out preset, out error))
+            if (!string.IsNullOrEmpty(inherit) &&
+                !TryBuildPreset(inherit, activeBiome, seen, out preset, out error))
             {
                 return false;
             }
@@ -331,8 +271,28 @@ namespace ValheimCreative.Features.Creative
 
             if (!File.Exists(path))
             {
-                File.WriteAllText(path, DefaultFileContents);
+                File.WriteAllText(path, CreativeEnvironmentDefaultPolicy.Contents);
+                return;
             }
+
+            string contents = File.ReadAllText(path);
+            if (!ShouldReplaceGeneratedPolicy(contents))
+            {
+                return;
+            }
+
+            string backupPath = $"{path}.bak-{DateTime.UtcNow:yyyyMMddHHmmss}";
+            File.Copy(path, backupPath, overwrite: false);
+            File.WriteAllText(path, CreativeEnvironmentDefaultPolicy.Contents);
+            ValheimCreativePlugin.ModLogger.LogInfo($"Updated generated creative environment policy. Backup: {backupPath}");
+        }
+
+        private static bool ShouldReplaceGeneratedPolicy(string contents)
+        {
+            return contents.IndexOf("preset: Vanilla", StringComparison.Ordinal) >= 0 &&
+                   contents.IndexOf("sparseMeadows:", StringComparison.Ordinal) >= 0 &&
+                   contents.IndexOf("zones: {}", StringComparison.Ordinal) >= 0 &&
+                   contents.IndexOf("defaultBlackForest:", StringComparison.Ordinal) < 0;
         }
 
         private static string GetPath()
@@ -355,7 +315,7 @@ namespace ValheimCreative.Features.Creative
                 TerrainEnabled = false,
                 TerrainMode = CreativeTerrainMode.FlatPad,
                 VegetationEnabled = false,
-                VegetationPreset = "Vanilla",
+                VegetationPreset = CreativeEnvironmentPolicy.DefaultPresetName,
                 VegetationDropsEnabled = false
             };
         }
@@ -363,7 +323,7 @@ namespace ValheimCreative.Features.Creative
         internal bool TerrainEnabled { get; set; }
         internal CreativeTerrainMode TerrainMode { get; set; }
         internal bool VegetationEnabled { get; set; }
-        internal string VegetationPreset { get; set; } = "Vanilla";
+        internal string VegetationPreset { get; set; } = CreativeEnvironmentPolicy.DefaultPresetName;
         internal bool VegetationDropsEnabled { get; set; }
 
         internal static CreativeEnvironmentSettings FromYaml(CreativeEnvironmentOverrideYaml? yaml)
@@ -373,7 +333,7 @@ namespace ValheimCreative.Features.Creative
                 TerrainEnabled = true,
                 TerrainMode = CreativeTerrainMode.WorldSeedPatch,
                 VegetationEnabled = true,
-                VegetationPreset = "Vanilla",
+                VegetationPreset = CreativeEnvironmentPolicy.DefaultPresetName,
                 VegetationDropsEnabled = false
             };
             settings.Apply(yaml);
@@ -394,12 +354,6 @@ namespace ValheimCreative.Features.Creative
                     TerrainEnabled = yaml.Terrain.Enabled.Value;
                 }
 
-                string terrainMode = yaml.Terrain.Mode ?? string.Empty;
-                if (!string.IsNullOrWhiteSpace(terrainMode) &&
-                    Enum.TryParse(terrainMode.Trim(), ignoreCase: true, out CreativeTerrainMode mode))
-                {
-                    TerrainMode = mode;
-                }
             }
 
             if (yaml.Vegetation != null)
@@ -445,11 +399,10 @@ namespace ValheimCreative.Features.Creative
     internal sealed class CreativeTerrainPolicyYaml
     {
         public bool? Enabled { get; set; }
-        public string? Mode { get; set; }
 
         public override string ToString()
         {
-            return $"{Enabled}:{Mode}";
+            return $"{Enabled}";
         }
     }
 

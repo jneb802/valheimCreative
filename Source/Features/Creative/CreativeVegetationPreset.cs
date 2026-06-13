@@ -24,25 +24,35 @@ namespace ValheimCreative.Features.Creative
         internal HashSet<string> PrefabNames { get; }
         internal IReadOnlyList<ZoneSystem.ZoneVegetation> Entries => _entries;
 
-        internal static CreativeVegetationPreset Vanilla(Heightmap.Biome biome)
+        internal IReadOnlyList<ZoneSystem.ZoneVegetation> CreatePlacementEntries()
         {
-            List<ZoneSystem.ZoneVegetation> entries = new();
-            if (ZoneSystem.instance != null)
-            {
-                foreach (ZoneSystem.ZoneVegetation vegetation in ZoneSystem.instance.m_vegetation)
+            return _entries
+                .Where(ShouldPlaceInCreativeInterior)
+                .Select(entry =>
                 {
-                    if (vegetation == null ||
-                        vegetation.m_prefab == null ||
-                        (vegetation.m_biome & biome) == Heightmap.Biome.None)
+                    ZoneSystem.ZoneVegetation clone = entry.Clone();
+                    clone.m_biome = Heightmap.Biome.All;
+                    clone.m_biomeArea = Heightmap.BiomeArea.Everything;
+                    if (clone.m_minOceanDepth <= 0f && clone.m_maxOceanDepth > 0f)
                     {
-                        continue;
+                        clone.m_minOceanDepth = 0f;
+                        clone.m_maxOceanDepth = 0f;
                     }
 
-                    entries.Add(vegetation.Clone());
-                }
-            }
+                    return clone;
+                })
+                .ToList();
+        }
 
-            return new CreativeVegetationPreset(biome, entries);
+        private static bool ShouldPlaceInCreativeInterior(ZoneSystem.ZoneVegetation entry)
+        {
+            return entry.m_biomeArea == Heightmap.BiomeArea.Everything ||
+                   (entry.m_biomeArea & Heightmap.BiomeArea.Median) != 0;
+        }
+
+        internal static CreativeVegetationPreset Empty(Heightmap.Biome biome)
+        {
+            return new CreativeVegetationPreset(biome, Enumerable.Empty<ZoneSystem.ZoneVegetation>());
         }
 
         internal CreativeVegetationPreset WithOverrides(IEnumerable<CreativeVegetationEntryYaml> overrides)
@@ -60,8 +70,9 @@ namespace ValheimCreative.Features.Creative
         {
             string prefabName = (overrideEntry.Prefab ?? string.Empty).Trim();
             string entryName = (overrideEntry.Name ?? string.Empty).Trim();
-            ZoneSystem.ZoneVegetation? entry = entries.FirstOrDefault(candidate =>
-                Matches(candidate, prefabName, entryName));
+            ZoneSystem.ZoneVegetation? entry = !string.IsNullOrWhiteSpace(entryName)
+                ? entries.FirstOrDefault(candidate => (candidate.m_name ?? string.Empty).Equals(entryName, StringComparison.OrdinalIgnoreCase))
+                : null;
 
             if (entry == null)
             {
@@ -81,6 +92,7 @@ namespace ValheimCreative.Features.Creative
                 {
                     m_name = string.IsNullOrWhiteSpace(entryName) ? prefabName : entryName,
                     m_prefab = prefab,
+                    m_enable = true,
                     m_biome = SourceBiome,
                     m_biomeArea = Heightmap.BiomeArea.Everything
                 };
@@ -88,19 +100,6 @@ namespace ValheimCreative.Features.Creative
             }
 
             ApplyFields(entry, overrideEntry);
-        }
-
-        private static bool Matches(ZoneSystem.ZoneVegetation candidate, string prefabName, string entryName)
-        {
-            if (!string.IsNullOrWhiteSpace(prefabName) &&
-                candidate.m_prefab != null &&
-                candidate.m_prefab.name.Equals(prefabName, StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            return !string.IsNullOrWhiteSpace(entryName) &&
-                   (candidate.m_name ?? string.Empty).Equals(entryName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void ApplyFields(ZoneSystem.ZoneVegetation entry, CreativeVegetationEntryYaml values)

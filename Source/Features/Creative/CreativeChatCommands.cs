@@ -139,7 +139,8 @@ namespace ValheimCreative.Features.Creative
         {
             return command == CreativeCommand.Reset ||
                    command == CreativeCommand.Load ||
-                   command == CreativeCommand.Save
+                   command == CreativeCommand.Save ||
+                   command == CreativeCommand.Poi
                 ? SlowCommandDedupeSeconds
                 : DefaultCommandDedupeSeconds;
         }
@@ -147,7 +148,8 @@ namespace ValheimCreative.Features.Creative
         private static bool RequiresAdmin(CreativeCommand command)
         {
             return command == CreativeCommand.Size ||
-                   command == CreativeCommand.Offset;
+                   command == CreativeCommand.Offset ||
+                   command == CreativeCommand.Poi;
         }
 
         private static bool IsSenderAdmin(long peerId)
@@ -184,6 +186,8 @@ namespace ValheimCreative.Features.Creative
                 CreativeCommand.Tools => CreativeSessionManager.SpawnTools(playerZdo),
                 CreativeCommand.Reset => CreativeSessionManager.ResetCreativeZone(playerZdo),
                 CreativeCommand.Biome => CreativeSessionManager.SetCreativeBiome(playerZdo, commandArgument),
+                CreativeCommand.Terrain => CreativeSessionManager.SetCreativeTerrain(playerZdo, commandArgument),
+                CreativeCommand.Poi => CreativeSessionManager.SetCreativePoi(playerZdo, commandArgument),
                 CreativeCommand.Size => CreativeSessionManager.GetOrSetCurrentCreativeZoneRadius(playerZdo, commandArgument),
                 CreativeCommand.Offset => CreativeSessionManager.GetOrSetBlueprintLoadOffset(playerZdo, commandArgument),
                 CreativeCommand.Load => CreativeSessionManager.LoadBlueprint(playerZdo, commandArgument),
@@ -242,6 +246,18 @@ namespace ValheimCreative.Features.Creative
                 return true;
             }
 
+            if (trimmed.Equals(creative + " terrain", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Terrain;
+                return true;
+            }
+
+            if (trimmed.Equals(creative + " poi", StringComparison.OrdinalIgnoreCase))
+            {
+                command = CreativeCommand.Poi;
+                return true;
+            }
+
             if (trimmed.Equals(creative + " size", StringComparison.OrdinalIgnoreCase))
             {
                 command = CreativeCommand.Size;
@@ -259,6 +275,34 @@ namespace ValheimCreative.Features.Creative
                 }
 
                 command = CreativeCommand.Biome;
+                return true;
+            }
+
+            string terrainPrefix = creative + " terrain ";
+            if (trimmed.StartsWith(terrainPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                commandArgument = trimmed.Substring(terrainPrefix.Length).Trim();
+                if (commandArgument.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Terrain;
+                return true;
+            }
+
+            string poiPrefix = creative + " poi ";
+            if (trimmed.StartsWith(poiPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                commandArgument = trimmed.Substring(poiPrefix.Length).Trim();
+                if (commandArgument.Length == 0)
+                {
+                    command = CreativeCommand.None;
+                    return false;
+                }
+
+                command = CreativeCommand.Poi;
                 return true;
             }
 

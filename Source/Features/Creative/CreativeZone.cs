@@ -13,6 +13,7 @@ namespace ValheimCreative.Features.Creative
         internal float Radius { get; set; }
         internal CreativeTerrainMode TerrainMode { get; set; }
         internal CreativeTerrainSource? TerrainSource { get; set; }
+        internal string PoiName { get; set; }
         internal string InviteCode => CreateInviteCode(OwnerPlayerId, SlotId);
 
         internal CreativeZone(
@@ -24,7 +25,8 @@ namespace ValheimCreative.Features.Creative
             Heightmap.Biome biome,
             float radius,
             CreativeTerrainMode terrainMode = CreativeTerrainMode.FlatPad,
-            CreativeTerrainSource? terrainSource = null)
+            CreativeTerrainSource? terrainSource = null,
+            string poiName = "")
         {
             OwnerPlayerId = ownerPlayerId;
             OwnerPlayerName = ownerPlayerName;
@@ -35,6 +37,7 @@ namespace ValheimCreative.Features.Creative
             Radius = Mathf.Max(1f, radius);
             TerrainMode = terrainMode;
             TerrainSource = terrainSource;
+            PoiName = poiName;
         }
 
         internal static string CreateInviteCode(long ownerPlayerId, string slotId)

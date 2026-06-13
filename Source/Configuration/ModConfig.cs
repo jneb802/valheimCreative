@@ -14,7 +14,7 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> CreativePosition = null!;
         internal static ConfigEntry<string> CreativeRotation = null!;
         internal static ConfigEntry<float> CreativeZoneSpacing = null!;
-        internal static ConfigEntry<string> CreativeTerrainMode = null!;
+        internal static ConfigEntry<string> DefaultCreativeTerrainMode = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMinDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMaxDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMinHeight = null!;
@@ -93,11 +93,11 @@ namespace ValheimCreative.Configuration
                 1920f,
                 "Distance between creative zone centers. Default is 30 * 64.");
 
-            CreativeTerrainMode = config.Bind(
+            DefaultCreativeTerrainMode = config.Bind(
                 "Creative",
-                "CreativeTerrainMode",
-                "FlatPad",
-                "Creative zone terrain mode. FlatPad uses the packaged level terrain modifier. WorldSeedPatch keeps zones outside the map but makes PraetorisClient sample a matching in-world terrain patch.");
+                "DefaultCreativeTerrainMode",
+                "WorldSeedPatch",
+                "Default terrain mode for newly allocated creative zones. FlatPad uses the packaged level terrain modifier. WorldSeedPatch keeps zones outside the map but makes PraetorisClient sample an in-world terrain patch. Existing saved zones keep their saved terrainMode.");
 
             CreativeTerrainSourceMinDistance = config.Bind(
                 "Creative",
