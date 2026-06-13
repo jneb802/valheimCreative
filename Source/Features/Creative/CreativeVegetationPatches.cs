@@ -37,7 +37,7 @@ namespace ValheimCreative.Features.Creative
 
                 __state = new PlacementPatchState(__instance.m_vegetation, context);
                 __instance.m_vegetation = context.Preset != null
-                    ? new List<ZoneSystem.ZoneVegetation>(context.Preset.Entries)
+                    ? new List<ZoneSystem.ZoneVegetation>(context.Preset.CreatePlacementEntries())
                     : new List<ZoneSystem.ZoneVegetation>();
             }
 

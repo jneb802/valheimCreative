@@ -1,3 +1,48 @@
+# 0.2.33
+
+- Fixed BlackForest pine placement in creative zones by ignoring shallow ocean-depth rejection during copied terrain vegetation placement.
+- Restores missing creative vegetation once per active zone after server restart or zone reload when terrain and vegetation are enabled.
+
+# 0.2.32
+
+- Changed creative vegetation placement to treat creative zones as biome interior: median vegetation is allowed without relying on outside-map biome-area checks, while edge-only vegetation is skipped.
+
+# 0.2.31
+
+- Made creative vegetation placement ignore vanilla edge/median biome-area classification so default vegetation spawns reliably in out-of-map creative zones.
+
+# 0.2.30
+
+- Fixed explicit creative vegetation presets spawning zero objects by allowing creative placement entries to pass Valheim's sector-corner biome precheck.
+
+# 0.2.29
+
+- Made `!creative poi` admin-only while POI terrain support is still experimental.
+
+# 0.2.28
+
+- Replaced runtime vegetation preset cloning with explicit YAML default presets generated from the Jotunn vegetation list.
+- Added full default presets for Meadows, BlackForest, Swamp, Mountain, Plains, Mistlands, AshLands, DeepNorth, and Ocean.
+- Changed custom preset inheritance to use named presets only, so duplicate prefab rows such as BlackForest `FirTree` entries remain configurable as separate vegetation rules.
+
+# 0.2.27
+
+- Added `!creative poi`, `!creative poi <name>`, and `!creative poi none`.
+- POI terrain uses an existing generated vanilla or modded location instance as the terrain source and spawns the selected location at the creative zone center.
+- Saved creative zone state now includes the selected `poiName`.
+
+# 0.2.26
+
+- Fixed `!creative biome none` so it disables the biome override and switches the zone back to flat terrain instead of selecting a random world terrain source.
+- Prevented `!creative terrain world` while the zone biome is `None`.
+
+# 0.2.25
+
+- Added `!creative terrain`, `!creative terrain flat`, and `!creative terrain world`.
+- Added `!creative biome none`.
+- New creative zones now default to Meadows with world terrain through `DefaultCreativeTerrainMode`, while old saved zones without `terrainMode` load as flat and keep their saved radius.
+- Updated `!creative tools` to spawn a blackmetal pickaxe and blackmetal axe.
+
 # 0.2.8
 
 - Added automatic safe object migration when `CreativeZoneSpacing` changes, with JSON backups before applying moved zone/session positions.

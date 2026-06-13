@@ -43,11 +43,35 @@ Install `valheimCreative.dll` on the dedicated server.
 !creative save blueprintName
 !creative biome
 !creative biome Plains
+!creative biome none
+!creative terrain
+!creative terrain flat
+!creative terrain world
+!creative poi                  # admin only
+!creative poi StartTemple      # admin only
+!creative poi none             # admin only
 !creative size                 # admin only
 !creative size 192             # admin only
 !creative offset blueprintName # admin only
 !creative offset blueprintName -1.25 # admin only
 ```
+
+New creative zones default to Meadows with world terrain. Saved zones keep their
+stored `terrainMode`; old production zone records that do not have `terrainMode`
+load as flat terrain. Saved zone radii are preserved on load even when they are
+above the current `MaxCreativeZoneRadius`; that max applies to future size
+changes.
+`!creative biome none` disables the biome override and switches the zone to flat
+terrain because world terrain needs a real source biome.
+`!creative poi <name>` finds an existing generated vanilla or modded location
+with that name, uses its world terrain as the creative terrain source, and
+spawns the same location at the creative zone center. Use `!creative poi none`
+to clear the selected POI.
+
+`valheimCreative.environment.yaml` ships explicit default vegetation presets
+for each supported biome. Custom presets should inherit from names like
+`defaultMeadows`, `defaultBlackForest`, or `defaultMountain`, then override
+specific entry names.
 
 Server console migration command:
 
@@ -82,7 +106,7 @@ loads, create `blueprint-metadata.json` in the configured blueprint directory:
 
 Negative `loadYOffset` values lower the loaded build. Positive values raise it.
 Supported biome values include `Meadows`, `BlackForest`, `Swamp`, `Mountain`,
-`Plains`, `Mistlands`, `AshLands`, `DeepNorth`, and `Ocean`.
+`Plains`, `Mistlands`, `AshLands`, `DeepNorth`, `Ocean`, and `None`.
 
 The same offset value can be read or changed by admins in game with
 `!creative offset <blueprintName> [loadYOffset]`, or from the server console

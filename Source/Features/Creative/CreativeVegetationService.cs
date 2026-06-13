@@ -19,7 +19,13 @@ namespace ValheimCreative.Features.Creative
             out CreativeVegetationPlacementContext? context)
         {
             context = null;
-            if (!CreativeSessionManager.TryGetCreativeZoneAtPosition(zoneCenter, out CreativeZone? zone) || zone == null)
+            bool foundZone = CreativeSessionManager.TryGetCreativeZoneAtPosition(zoneCenter, out CreativeZone? zone);
+            if (!foundZone)
+            {
+                foundZone = CreativeSessionManager.TryGetCreativeZoneForTerrainSector(zoneCenter, out zone);
+            }
+
+            if (!foundZone || zone == null)
             {
                 return false;
             }
@@ -65,6 +71,7 @@ namespace ValheimCreative.Features.Creative
 
             int marked = 0;
             int removedFromEdge = 0;
+            Dictionary<string, int> markedByPrefab = new(StringComparer.Ordinal);
             foreach (ZDO zdo in FindVegetationZdos(context.Zone, context.Preset.PrefabNames, GetVegetationCleanupRadius(context.Zone)))
             {
                 if (Utils.DistanceXZ(zdo.GetPosition(), context.Zone.Position) > context.Zone.Radius)
@@ -92,13 +99,21 @@ namespace ValheimCreative.Features.Creative
                 zdo.Set(ZdoVegetationMarker, true);
                 zdo.Set(ZdoVegetationSlotId, context.Zone.SlotId);
                 marked++;
+                string prefabName = GetPrefabName(zdo);
+                if (!string.IsNullOrWhiteSpace(prefabName))
+                {
+                    markedByPrefab[prefabName] = markedByPrefab.TryGetValue(prefabName, out int count) ? count + 1 : 1;
+                }
             }
 
             LastPlacementMarkedCount = marked;
             if (marked > 0 || removedFromEdge > 0)
             {
+                string prefabSummary = markedByPrefab.Count > 0
+                    ? $"; prefabs={string.Join(",", markedByPrefab.OrderBy(entry => entry.Key, StringComparer.Ordinal).Select(entry => $"{entry.Key}:{entry.Value}"))}"
+                    : string.Empty;
                 ValheimCreativePlugin.ModLogger.LogInfo(
-                    $"Marked {marked} creative vegetation object(s) in {context.Zone.SlotId} using preset {context.Settings.VegetationPreset}; removedEdge={removedFromEdge}.");
+                    $"Marked {marked} creative vegetation object(s) in {context.Zone.SlotId} using preset {context.Settings.VegetationPreset}; removedEdge={removedFromEdge}{prefabSummary}.");
             }
         }
 
@@ -216,6 +231,30 @@ namespace ValheimCreative.Features.Creative
 
             stopwatch.Stop();
             return LogRegenerationResult(zone, settings, stopwatch, scannedSectors, processedSectors, spawnedObjects, string.Empty);
+        }
+
+        internal static bool TryRestoreMissingCreativeVegetation(CreativeZone zone)
+        {
+            CreativeEnvironmentSettings settings = CreativeEnvironmentPolicy.Resolve(zone);
+            if (!settings.TerrainEnabled ||
+                !settings.VegetationEnabled ||
+                zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch ||
+                ZDOMan.instance == null)
+            {
+                return false;
+            }
+
+            int existingMarked = FindZoneZdos(zone, zone.Radius)
+                .Count(zdo => zdo != null && zdo.IsValid() && IsMarkedCreativeVegetation(zdo));
+            if (existingMarked > 0)
+            {
+                return false;
+            }
+
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Creative vegetation missing for {zone.SlotId}; regenerating preset {settings.VegetationPreset}.");
+            RegenerateCreativeVegetation(zone);
+            return true;
         }
 
         internal static bool ShouldSuppressDrops(Component component)
@@ -387,14 +426,13 @@ namespace ValheimCreative.Features.Creative
         {
             Vector2i centerSector = ZoneSystem.GetZone(zone.Position);
             int sectorArea = GetZoneSearchSectorArea(zone);
-            float radius = Mathf.Max(1f, zone.Radius) + ZoneSystem.c_ZoneHalfSize;
             for (int y = centerSector.y - sectorArea; y <= centerSector.y + sectorArea; y++)
             {
                 for (int x = centerSector.x - sectorArea; x <= centerSector.x + sectorArea; x++)
                 {
                     Vector2i sector = new(x, y);
                     Vector3 sectorPosition = ZoneSystem.GetZonePos(sector);
-                    if (Utils.DistanceXZ(zone.Position, sectorPosition) <= radius)
+                    if (CreativeSessionManager.DoesSectorIntersectCreativeRadius(zone, sectorPosition))
                     {
                         yield return sector;
                     }

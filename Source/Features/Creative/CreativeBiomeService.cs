@@ -41,16 +41,30 @@ namespace ValheimCreative.Features.Creative
                    biome != Heightmap.Biome.All;
         }
 
+        internal static bool TryParseBiomeSelection(string raw, out Heightmap.Biome biome)
+        {
+            string normalized = raw.Trim();
+            if (normalized.Equals("none", StringComparison.OrdinalIgnoreCase))
+            {
+                biome = Heightmap.Biome.None;
+                return true;
+            }
+
+            return TryParseBiome(raw, out biome);
+        }
+
         internal static void SendOverride(CreativeSession session)
         {
             CreativeSessionManager.TryGetTerrainSource(session.OwnerPlayerId, out CreativeTerrainSource? terrainSource);
+            Heightmap.Biome biome = terrainSource?.Biome ?? session.CreativeBiome;
+            bool enabled = biome != Heightmap.Biome.None;
             SendOverride(
                 session.PeerId,
                 session.SlotId,
                 session.CreativePosition,
                 session.ZoneRadius,
-                terrainSource?.Biome ?? session.CreativeBiome,
-                enabled: true,
+                biome,
+                enabled,
                 suppressSpawns: session.OwnerPlayerId != 0L,
                 terrainSource);
         }
