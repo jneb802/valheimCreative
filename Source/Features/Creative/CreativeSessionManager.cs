@@ -1022,7 +1022,7 @@ namespace ValheimCreative.Features.Creative
                     continue;
                 }
 
-                session.PeerId = ResolvePeerId(playerZdo, session.PeerId);
+                RefreshSessionPeer(session, playerZdo);
                 TryRestoreMissingVegetationOnce(session);
                 bool isDead = IsDead(playerZdo);
 
@@ -1094,7 +1094,7 @@ namespace ValheimCreative.Features.Creative
                 ZDO? playerZdo = FindPlayerZdo(session.PlayerId);
                 if (playerZdo != null)
                 {
-                    session.PeerId = ResolvePeerId(playerZdo, session.PeerId);
+                    RefreshSessionPeer(session, playerZdo);
                 }
 
                 SendSessionKeys(session);
@@ -1133,6 +1133,20 @@ namespace ValheimCreative.Features.Creative
         internal static void SetSession(CreativeSession session)
         {
             SessionsByPlayerId[session.PlayerId] = session;
+        }
+
+        private static void RefreshSessionPeer(CreativeSession session, ZDO playerZdo)
+        {
+            long previousPeerId = session.PeerId;
+            long resolvedPeerId = ResolvePeerId(playerZdo, previousPeerId);
+            if (resolvedPeerId == previousPeerId)
+            {
+                return;
+            }
+
+            session.PeerId = resolvedPeerId;
+            session.CreativeKeysSent = false;
+            LogDebug($"Creative session peer changed for {session.PlayerName} ({session.PlayerId}); creative keys will be resent.");
         }
 
         internal static string DescribePlayerLookup(ZDOID characterId)
