@@ -897,6 +897,21 @@ namespace ValheimCreative.Features.Creative
                 return Lines("Use !creative before loading a blueprint.");
             }
 
+            if (!CreativeBlueprintService.TryGetBlueprintEnvironmentMetadata(
+                    fileName,
+                    out Heightmap.Biome? metadataBiome,
+                    out CreativeTerrainSource? metadataTerrainSource,
+                    out string metadataError))
+            {
+                return Lines(metadataError);
+            }
+
+            if (!ApplyBlueprintEnvironmentMetadata(session.OwnerPlayerId, metadataBiome, metadataTerrainSource, out string metadataApplyError))
+            {
+                return Lines(metadataApplyError);
+            }
+
+            session = SessionsByPlayerId[playerId];
             if (!TryPrepareCreativeTerrain(session.OwnerPlayerId, session.CreativePosition, session.SlotId, out string locationError))
             {
                 return Lines(locationError);
@@ -909,27 +924,14 @@ namespace ValheimCreative.Features.Creative
                     session.OwnerPlayerId,
                     out int spawned,
                     out List<string> missingPrefabs,
-                    out Heightmap.Biome? metadataBiome,
+                    out Heightmap.Biome? loadedMetadataBiome,
                     out string error))
             {
                 return Lines(error);
             }
 
-            if (metadataBiome.HasValue)
-            {
-                if (ApplyBiomeToZone(session.OwnerPlayerId, metadataBiome.Value, out string biomeError))
-                {
-                    Save();
-                }
-                else
-                {
-                    ValheimCreativePlugin.ModLogger.LogWarning(
-                        $"Loaded blueprint {fileName} into {session.SlotId}, but failed to apply metadata biome {metadataBiome.Value}: {biomeError}");
-                }
-            }
-
             ValheimCreativePlugin.ModLogger.LogInfo(
-                $"Loaded blueprint {fileName} into {session.SlotId} at {Format(session.CreativePosition)}. Spawned {spawned} object(s), missing {missingPrefabs.Count} prefab(s).");
+                $"Loaded blueprint {fileName} into {session.SlotId} at {Format(session.CreativePosition)}. Spawned {spawned} object(s), missing {missingPrefabs.Count} prefab(s), metadataBiome={(loadedMetadataBiome.HasValue ? loadedMetadataBiome.Value.ToString() : "none")}, metadataTerrainSource={(metadataTerrainSource != null ? Format(metadataTerrainSource.Center) : "none")}.");
 
             if (missingPrefabs.Count > 0)
             {
@@ -937,6 +939,70 @@ namespace ValheimCreative.Features.Creative
             }
 
             return Lines($"Blueprint loaded. Spawned {spawned} object(s).");
+        }
+
+        private static bool ApplyBlueprintEnvironmentMetadata(
+            long ownerPlayerId,
+            Heightmap.Biome? metadataBiome,
+            CreativeTerrainSource? metadataTerrainSource,
+            out string error)
+        {
+            error = string.Empty;
+            if (!metadataBiome.HasValue && metadataTerrainSource == null)
+            {
+                return true;
+            }
+
+            if (!ZonesByOwnerId.TryGetValue(ownerPlayerId, out CreativeZone zone))
+            {
+                error = $"Creative zone was not found for player {ownerPlayerId}.";
+                return false;
+            }
+
+            if (metadataTerrainSource == null)
+            {
+                return !metadataBiome.HasValue || ApplyBiomeToZone(ownerPlayerId, metadataBiome.Value, out error);
+            }
+
+            Heightmap.Biome previousBiome = zone.Biome;
+            CreativeTerrainMode previousTerrainMode = zone.TerrainMode;
+            CreativeTerrainSource? previousTerrainSource = zone.TerrainSource;
+            Vector3 previousPosition = zone.Position;
+            string previousPoiName = zone.PoiName;
+
+            CreativeVegetationService.DestroyCreativeVegetation(zone);
+            DestroyCreativePoiObjects(zone);
+            zone.PoiName = string.Empty;
+            zone.Biome = metadataTerrainSource.Biome;
+            zone.TerrainMode = CreativeTerrainMode.WorldSeedPatch;
+            zone.TerrainSource = metadataTerrainSource.WorldSeed == GetWorldSeed()
+                ? metadataTerrainSource
+                : null;
+
+            if (zone.TerrainSource != null)
+            {
+                TryAlignZoneHeightToTerrainSource(zone, zone.TerrainSource);
+            }
+
+            if (!TryEnsureTerrainSource(zone, forceNewSource: false, out error, out _))
+            {
+                zone.Biome = previousBiome;
+                zone.TerrainMode = previousTerrainMode;
+                zone.TerrainSource = previousTerrainSource;
+                zone.Position = previousPosition;
+                zone.PoiName = previousPoiName;
+                SyncSessionsForZone(zone);
+                return false;
+            }
+
+            DestroyCreativeTerrainModifiers(zone.Position, zone.SlotId);
+            CreativeVegetationService.RegenerateCreativeVegetation(zone);
+            SyncSessionsForZone(zone);
+            SendZoneUpdates(ownerPlayerId);
+            Save();
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Applied blueprint terrain metadata to {zone.SlotId}: biome={zone.Biome}, terrain=world, source={Format(zone.TerrainSource?.Center ?? Vector3.zero)}, metadataSeed={metadataTerrainSource.WorldSeed}, worldSeed={GetWorldSeed()}.");
+            return true;
         }
 
         internal static IEnumerable<string> LoadBlueprintForPlayerId(long playerId, string fileName)

@@ -145,6 +145,49 @@ namespace ValheimCreative.Features.Creative
             return true;
         }
 
+        internal static bool TryGetBlueprintEnvironmentMetadata(
+            string fileName,
+            out Heightmap.Biome? metadataBiome,
+            out CreativeTerrainSource? metadataTerrainSource,
+            out string error)
+        {
+            metadataBiome = null;
+            metadataTerrainSource = null;
+            error = string.Empty;
+
+            string path;
+            try
+            {
+                path = ResolveBlueprintPath(fileName);
+            }
+            catch (ArgumentException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+
+            if (!File.Exists(path))
+            {
+                error = $"Blueprint was not found: {Path.GetFileName(path)}.";
+                return false;
+            }
+
+            try
+            {
+                Parse(path);
+            }
+            catch (Exception ex)
+            {
+                error = $"Blueprint parse failed: {ex.Message}";
+                return false;
+            }
+
+            BlueprintMetadata metadata = GetMetadata(Path.GetFileName(path));
+            metadataBiome = metadata.Biome;
+            metadataTerrainSource = metadata.TerrainSource;
+            return true;
+        }
+
         private static Vector3 GetLoadAnchor(BlueprintFile blueprint)
         {
             if (blueprint.Pieces.Count == 0)
@@ -196,7 +239,8 @@ namespace ValheimCreative.Features.Creative
                         biome = parsedBiome;
                     }
 
-                    return new BlueprintMetadata(loadYOffset, biome, null);
+                    CreativeTerrainSource? terrainSource = ParseTerrainSource(entry);
+                    return new BlueprintMetadata(loadYOffset, biome, terrainSource);
                 }
 
                 return TryParseLoadYOffset(entry, out float legacyOffset)
@@ -251,6 +295,52 @@ namespace ValheimCreative.Features.Creative
             }
 
             return float.TryParse(token.ToString().Trim(), NumberStyles.Float, Invariant, out offset);
+        }
+
+        private static CreativeTerrainSource? ParseTerrainSource(JToken entry)
+        {
+            JToken? terrainModeToken = entry["terrainMode"];
+            if (terrainModeToken != null &&
+                !terrainModeToken.ToString().Trim().Equals(CreativeTerrainMode.WorldSeedPatch.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            JToken? centerToken = entry["terrainSourceCenter"];
+            JToken? biomeToken = entry["terrainSourceBiome"];
+            if (centerToken == null ||
+                biomeToken == null ||
+                !TryParseVector(centerToken.ToString(), out Vector3 center) ||
+                !CreativeBiomeService.TryParseBiome(biomeToken.ToString(), out Heightmap.Biome biome))
+            {
+                return null;
+            }
+
+            int worldSeed = 0;
+            JToken? worldSeedToken = entry["terrainSourceWorldSeed"];
+            if (worldSeedToken != null)
+            {
+                int.TryParse(worldSeedToken.ToString().Trim(), NumberStyles.Integer, Invariant, out worldSeed);
+            }
+
+            string worldSeedName = entry["terrainSourceWorldSeedName"]?.ToString() ?? string.Empty;
+            return new CreativeTerrainSource(center, biome, worldSeed, worldSeedName);
+        }
+
+        private static bool TryParseVector(string raw, out Vector3 value)
+        {
+            value = Vector3.zero;
+            string[] parts = raw.Split(',');
+            if (parts.Length != 3 ||
+                !float.TryParse(parts[0].Trim(), NumberStyles.Float, Invariant, out float x) ||
+                !float.TryParse(parts[1].Trim(), NumberStyles.Float, Invariant, out float y) ||
+                !float.TryParse(parts[2].Trim(), NumberStyles.Float, Invariant, out float z))
+            {
+                return false;
+            }
+
+            value = new Vector3(x, y, z);
+            return true;
         }
 
         internal static bool TrySaveBlueprint(
