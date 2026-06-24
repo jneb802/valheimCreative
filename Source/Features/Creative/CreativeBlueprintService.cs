@@ -16,6 +16,7 @@ namespace ValheimCreative.Features.Creative
         private static readonly int CreativeBlueprintHash = "valheimCreativeBlueprint".GetStableHashCode();
         private static readonly int CreativeBlueprintZoneHash = "valheimCreativeZone".GetStableHashCode();
         private static readonly int CreativeBlueprintDataHash = "valheimCreativeBlueprintData".GetStableHashCode();
+        private const string CreativeTerrainModifierFieldsHash = "HasFieldsTerrainModifier";
 
         internal static string GetBlueprintDirectory()
         {
@@ -136,6 +137,12 @@ namespace ValheimCreative.Features.Creative
                     {
                         zdo.Set(CreativeBlueprintDataHash, piece.Data);
                     }
+                }
+
+                TerrainModifier? terrainModifier = instance.GetComponent<TerrainModifier>() ?? instance.GetComponentInChildren<TerrainModifier>();
+                if (terrainModifier != null)
+                {
+                    PokeHeightmaps(terrainModifier);
                 }
 
                 spawned++;
@@ -421,12 +428,7 @@ namespace ValheimCreative.Features.Creative
                 }
 
                 GameObject prefab = ZNetScene.instance.GetPrefab(zdo.GetPrefab());
-                if (prefab == null || prefab.GetComponent<Piece>() == null)
-                {
-                    continue;
-                }
-
-                if (zdo.GetLong(ZDOVars.s_creator) == 0L)
+                if (prefab == null || !ShouldSaveBlueprintObject(prefab, zdo))
                 {
                     continue;
                 }
@@ -464,6 +466,46 @@ namespace ValheimCreative.Features.Creative
                 .ThenBy(piece => piece.LocalPosition.x)
                 .ThenBy(piece => piece.LocalPosition.z)
                 .ToList();
+        }
+
+        private static bool ShouldSaveBlueprintObject(GameObject prefab, ZDO zdo)
+        {
+            if (zdo.GetBool(CreativeTerrainModifierFieldsHash))
+            {
+                return false;
+            }
+
+            if (IsTerrainBlueprintObject(prefab))
+            {
+                return true;
+            }
+
+            return prefab.GetComponent<Piece>() != null &&
+                   zdo.GetLong(ZDOVars.s_creator) != 0L;
+        }
+
+        private static bool IsTerrainBlueprintObject(GameObject prefab)
+        {
+            return prefab.GetComponent<TerrainModifier>() != null ||
+                   prefab.GetComponentInChildren<TerrainModifier>() != null ||
+                   prefab.GetComponent<TerrainOp>() != null ||
+                   prefab.GetComponentInChildren<TerrainOp>() != null;
+        }
+
+        private static void PokeHeightmaps(TerrainModifier terrainModifier)
+        {
+            foreach (Heightmap heightmap in Heightmap.GetAllHeightmaps())
+            {
+                if (heightmap != null && heightmap.TerrainVSModifier(terrainModifier))
+                {
+                    heightmap.Poke(false);
+                }
+            }
+
+            if (ClutterSystem.instance != null)
+            {
+                ClutterSystem.instance.ResetGrass(terrainModifier.transform.position, terrainModifier.GetRadius());
+            }
         }
 
         private static string ResolvePieceCategory(GameObject prefab)

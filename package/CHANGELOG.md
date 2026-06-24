@@ -1,5 +1,6 @@
 # 0.2.33
 
+- Saved persistent Valheim terrain modifier objects in creative blueprints so hoe terrain edits can be restored with the build.
 - Fixed BlackForest pine placement in creative zones by ignoring shallow ocean-depth rejection during copied terrain vegetation placement.
 - Restores missing creative vegetation once per active zone after server restart or zone reload when terrain and vegetation are enabled.
 
