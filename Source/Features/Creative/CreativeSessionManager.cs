@@ -30,6 +30,7 @@ namespace ValheimCreative.Features.Creative
         private const float WorldSeedPatchTeleportHeightOffset = 1.5f;
         private const float CreativeZonePositionTolerance = 8f;
         private const float CreativeZoneHeightTolerance = 32f;
+        private const float CreativeZoneBelowHeightTolerance = 1f;
         private const float OutsideZoneRecoveryCooldownSeconds = 5f;
         private const float TerrainSourceSpawnSlopeSampleDistance = 4f;
         private static readonly Vector2[] TerrainSourceSpawnSlopeSampleOffsets =
@@ -1053,13 +1054,14 @@ namespace ValheimCreative.Features.Creative
                     Save();
                     LogDebug($"Recovered creative session after death for {refreshedSession.PlayerName} ({refreshedSession.PlayerId}).");
                 }
-                else if (!session.CreativeKeysSent)
+                if (!session.CreativeKeysSent)
                 {
                     SendSessionKeys(session);
                     CreativeBiomeService.SendOverride(session);
                     CreativeCommandZoneGuard.SendState(session);
                 }
-                else if (!IsInsideCreativeZone(playerZdo, session))
+
+                if (!IsInsideCreativeZone(playerZdo, session))
                 {
                     if (!TryCheckOutsideZoneRecoveryCooldown(session.PlayerId))
                     {
@@ -1077,7 +1079,7 @@ namespace ValheimCreative.Features.Creative
                     CreativeBiomeService.SendOverride(refreshedSession);
                     TeleportToCreative(playerZdo, refreshedSession);
                     LogDebug(
-                        $"Reapplied creative teleport for {refreshedSession.PlayerName} ({refreshedSession.PlayerId}) after player ZDO position {Format(outsidePosition)} was outside {refreshedSession.SlotId}; distance={outsideDistance:0.##}m allowed={allowedDistance:0.##}m.");
+                        $"Reapplied creative teleport for {refreshedSession.PlayerName} ({refreshedSession.PlayerId}) after player ZDO position {Format(outsidePosition)} was outside safe bounds for {refreshedSession.SlotId}; distance={outsideDistance:0.##}m allowed={allowedDistance:0.##}m expected={Format(GetCreativeTeleportPosition(refreshedSession))}.");
                 }
             }
         }
@@ -2424,12 +2426,12 @@ namespace ValheimCreative.Features.Creative
                 return false;
             }
 
-            if (TryGetTerrainSource(session.OwnerPlayerId, out _))
+            Vector3 expectedPosition = GetCreativeTeleportPosition(session);
+            if (position.y < expectedPosition.y - CreativeZoneBelowHeightTolerance)
             {
-                return true;
+                return false;
             }
 
-            Vector3 expectedPosition = GetCreativeTeleportPosition(session);
             return Mathf.Abs(position.y - expectedPosition.y) <= CreativeZoneHeightTolerance;
         }
 
