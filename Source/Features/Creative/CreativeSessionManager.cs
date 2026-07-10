@@ -1993,15 +1993,29 @@ namespace ValheimCreative.Features.Creative
             if (!string.IsNullOrWhiteSpace(zone.PoiName))
             {
                 if (!forceNewSource &&
-                    existing != null &&
-                    existing.WorldSeed == worldSeed)
+                    existing != null)
                 {
-                    if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                    if (!IsLegacyTerrainSource(existing) &&
+                        existing.WorldSeed == worldSeed)
                     {
-                        changed = true;
+                        if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                        {
+                            changed = true;
+                        }
+
+                        return true;
                     }
 
-                    return true;
+                    if (IsLegacyTerrainSource(existing) &&
+                        TryBackfillLegacyTerrainSource(zone, existing, validatePatch: false, out CreativeTerrainSource? upgradedPoiSource, out _) &&
+                        upgradedPoiSource != null)
+                    {
+                        zone.TerrainSource = upgradedPoiSource;
+                        changed = true;
+                        TryAlignZoneHeightToTerrainSource(zone, upgradedPoiSource);
+                        LogBackfilledLegacyTerrainSource(zone, upgradedPoiSource);
+                        return true;
+                    }
                 }
 
                 if (!TrySelectPoiTerrainSource(zone.PoiName, out string poiName, out CreativeTerrainSource? poiSource, out error) ||
@@ -2021,7 +2035,20 @@ namespace ValheimCreative.Features.Creative
             if (!forceNewSource &&
                 existing != null)
             {
-                if (TryValidateExistingTerrainSource(zone, existing, out string replaceReason))
+                string replaceReason;
+                if (IsLegacyTerrainSource(existing))
+                {
+                    if (TryBackfillLegacyTerrainSource(zone, existing, validatePatch: true, out CreativeTerrainSource? upgradedSource, out replaceReason) &&
+                        upgradedSource != null)
+                    {
+                        zone.TerrainSource = upgradedSource;
+                        changed = true;
+                        TryAlignZoneHeightToTerrainSource(zone, upgradedSource);
+                        LogBackfilledLegacyTerrainSource(zone, upgradedSource);
+                        return true;
+                    }
+                }
+                else if (TryValidateExistingTerrainSource(zone, existing, out replaceReason))
                 {
                     if (TryAlignZoneHeightToTerrainSource(zone, existing))
                     {
@@ -2048,7 +2075,7 @@ namespace ValheimCreative.Features.Creative
         private static bool TryValidateExistingTerrainSource(CreativeZone zone, CreativeTerrainSource existing, out string replaceReason)
         {
             replaceReason = string.Empty;
-            if (existing.WorldSeed == 0)
+            if (IsLegacyTerrainSource(existing))
             {
                 replaceReason = "has no saved world seed";
                 return false;
@@ -2094,10 +2121,68 @@ namespace ValheimCreative.Features.Creative
             return true;
         }
 
+        private static bool TryBackfillLegacyTerrainSource(
+            CreativeZone zone,
+            CreativeTerrainSource existing,
+            bool validatePatch,
+            out CreativeTerrainSource? upgradedSource,
+            out string replaceReason)
+        {
+            upgradedSource = null;
+            replaceReason = string.Empty;
+            if (!IsLegacyTerrainSource(existing))
+            {
+                replaceReason = "is not a legacy terrain source";
+                return false;
+            }
+
+            if (WorldGenerator.instance == null)
+            {
+                replaceReason = "has no saved world seed and the world generator is not ready";
+                return false;
+            }
+
+            float x = existing.Center.x;
+            float z = existing.Center.z;
+            Heightmap.Biome biome = WorldGenerator.instance.GetBiome(x, z);
+            if (biome != zone.Biome)
+            {
+                replaceReason = $"has no saved world seed and current-world biome {biome} does not match zone biome {zone.Biome}";
+                return false;
+            }
+
+            float height = WorldGenerator.instance.GetHeight(x, z);
+            CreativeTerrainSource candidate = new(
+                new Vector3(x, height, z),
+                biome,
+                GetWorldSeed(),
+                GetWorldSeedName());
+            if (validatePatch &&
+                !TryValidateExistingTerrainSource(zone, candidate, out string validationReason))
+            {
+                replaceReason = $"has no saved world seed and {validationReason}";
+                return false;
+            }
+
+            upgradedSource = candidate;
+            return true;
+        }
+
+        private static bool IsLegacyTerrainSource(CreativeTerrainSource source)
+        {
+            return source.WorldSeed == 0 && string.IsNullOrWhiteSpace(source.WorldSeedName);
+        }
+
         private static void LogReplacingTerrainSource(CreativeZone zone, CreativeTerrainSource existing, string reason)
         {
             ValheimCreativePlugin.ModLogger.LogInfo(
                 $"Replacing terrain source for {zone.SlotId}: existing {existing.Biome} source at {Format(existing.Center)} {reason}.");
+        }
+
+        private static void LogBackfilledLegacyTerrainSource(CreativeZone zone, CreativeTerrainSource source)
+        {
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Backfilled legacy terrain source for {zone.SlotId}: source={Format(source.Center)}, sourceBiome={source.Biome}, worldSeed={source.WorldSeed}.");
         }
 
         private static bool TryAlignZoneHeightToTerrainSource(CreativeZone zone, CreativeTerrainSource source)
