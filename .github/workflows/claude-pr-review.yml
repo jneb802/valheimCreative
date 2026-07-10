@@ -74,7 +74,7 @@ jobs:
 
           set +e
           "${CLAUDE_BIN}" -p "$(cat .claude-review/prompt.md)" \
-            --max-turns 6 \
+            --max-turns 10 \
             --allowedTools "Read" \
             --output-format json \
             --no-session-persistence \
