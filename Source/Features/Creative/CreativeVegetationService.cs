@@ -301,9 +301,10 @@ namespace ValheimCreative.Features.Creative
                    component.GetComponent<DropOnDestroyed>() != null;
         }
 
-        internal static bool TryMapToTerrainSource(float x, float z, out Vector2 source)
+        internal static bool TryMapToTerrainSource(float x, float z, out Vector2 source, out CreativeTerrainSource? terrainSource)
         {
             source = Vector2.zero;
+            terrainSource = null;
             if (!CreativeSessionManager.TryGetCreativeZoneAtPosition(new Vector3(x, 0f, z), out CreativeZone? zone) ||
                 zone == null ||
                 zone.TerrainMode != CreativeTerrainMode.WorldSeedPatch ||
@@ -321,6 +322,7 @@ namespace ValheimCreative.Features.Creative
             source = new Vector2(
                 zone.TerrainSource.Center.x + (x - zone.Position.x),
                 zone.TerrainSource.Center.z + (z - zone.Position.z));
+            terrainSource = zone.TerrainSource;
             return true;
         }
 

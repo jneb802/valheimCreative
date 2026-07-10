@@ -875,6 +875,12 @@ namespace ValheimCreative.Features.Creative
             }
 
             _autoSpacingMigrationChecked = true;
+            if (!ModConfig.AutoMigrateCreativeZoneSpacing.Value)
+            {
+                ValheimCreativePlugin.ModLogger.LogInfo("Automatic creative zone spacing migration is disabled.");
+                return;
+            }
+
             float configuredSpacing = Mathf.Max(64f, ModConfig.CreativeZoneSpacing.Value);
             bool needsMigration = ZonesByOwnerId.Values.Any(zone =>
                 Utils.DistanceXZ(zone.Position, GetZonePosition(zone.SlotIndex, configuredSpacing)) > ZoneMigrationPositionTolerance);
@@ -964,6 +970,99 @@ namespace ValheimCreative.Features.Creative
             }
 
             return LoadBlueprint(playerZdo, fileName);
+        }
+
+        internal static IEnumerable<string> LoadBlueprintForZoneOwnerId(long ownerPlayerId, string fileName)
+        {
+            if (!IsServerReady())
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            if (!TryResolveCreativeZoneOwnerId(ownerPlayerId, out long resolvedOwnerId) ||
+                !ZonesByOwnerId.TryGetValue(resolvedOwnerId, out CreativeZone zone))
+            {
+                return Lines($"Creative zone was not found for player {ownerPlayerId}.");
+            }
+
+            if (!TryPrepareCreativeTerrain(zone.OwnerPlayerId, zone.Position, zone.SlotId, out string locationError))
+            {
+                return Lines(locationError);
+            }
+
+            zone = ZonesByOwnerId[resolvedOwnerId];
+            CreativeSession loadSession = new(
+                zone.OwnerPlayerId,
+                0L,
+                zone.OwnerPlayerName,
+                zone.OwnerPlayerId,
+                zone.SlotId,
+                zone.Position,
+                ModConfig.CreativeRotationValue,
+                zone.Biome,
+                zone.Radius,
+                Vector3.zero,
+                Quaternion.identity,
+                grantCreativeKeys: false);
+
+            if (!CreativeBlueprintService.TryLoadBlueprint(
+                    fileName,
+                    loadSession,
+                    zone.OwnerPlayerId,
+                    out int spawned,
+                    out List<string> missingPrefabs,
+                    out Heightmap.Biome? metadataBiome,
+                    out string error))
+            {
+                return Lines(error);
+            }
+
+            if (metadataBiome.HasValue)
+            {
+                if (ApplyBiomeToZone(zone.OwnerPlayerId, metadataBiome.Value, out string biomeError))
+                {
+                    Save();
+                    zone = ZonesByOwnerId[resolvedOwnerId];
+                }
+                else
+                {
+                    ValheimCreativePlugin.ModLogger.LogWarning(
+                        $"Loaded blueprint {fileName} into {zone.SlotId}, but failed to apply metadata biome {metadataBiome.Value}: {biomeError}");
+                }
+            }
+
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Loaded blueprint {fileName} into {zone.SlotId} at {Format(zone.Position)}. Spawned {spawned} object(s), missing {missingPrefabs.Count} prefab(s).");
+
+            if (missingPrefabs.Count > 0)
+            {
+                return Lines($"Blueprint loaded into {zone.SlotId}. Spawned {spawned} object(s). Missing prefabs: {string.Join(", ", missingPrefabs.Take(8))}{(missingPrefabs.Count > 8 ? "..." : "")}.");
+            }
+
+            return Lines($"Blueprint loaded into {zone.SlotId}. Spawned {spawned} object(s).");
+        }
+
+        internal static IEnumerable<string> ResetCreativeZoneForOwnerId(long ownerPlayerId)
+        {
+            if (!IsServerReady() || ZDOMan.instance == null)
+            {
+                return Lines("Server is not ready yet.");
+            }
+
+            if (!TryResolveCreativeZoneOwnerId(ownerPlayerId, out long resolvedOwnerId) ||
+                !ZonesByOwnerId.TryGetValue(resolvedOwnerId, out CreativeZone zone))
+            {
+                return Lines($"Creative zone was not found for player {ownerPlayerId}.");
+            }
+
+            ZoneSystem.instance?.m_locationInstances.Remove(ZoneSystem.GetZone(zone.Position));
+            int removed = DestroyCreativeZoneZdos(zone.Position, zone.Radius);
+            if (!TryPrepareCreativeTerrain(zone.OwnerPlayerId, zone.Position, zone.SlotId, out string error))
+            {
+                return Lines($"Creative zone reset removed {removed} object(s), but terrain restore failed: {error}");
+            }
+
+            return Lines($"Creative zone reset removed {removed} object(s) from {zone.SlotId}.");
         }
 
         internal static IEnumerable<string> SaveBlueprint(ZDO playerZdo, string fileName)
@@ -1894,15 +1993,29 @@ namespace ValheimCreative.Features.Creative
             if (!string.IsNullOrWhiteSpace(zone.PoiName))
             {
                 if (!forceNewSource &&
-                    existing != null &&
-                    existing.WorldSeed == worldSeed)
+                    existing != null)
                 {
-                    if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                    if (!IsLegacyTerrainSource(existing) &&
+                        existing.WorldSeed == worldSeed)
                     {
-                        changed = true;
+                        if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                        {
+                            changed = true;
+                        }
+
+                        return true;
                     }
 
-                    return true;
+                    if (IsLegacyTerrainSource(existing) &&
+                        TryBackfillLegacyTerrainSource(zone, existing, validatePatch: false, out CreativeTerrainSource? upgradedPoiSource, out _) &&
+                        upgradedPoiSource != null)
+                    {
+                        zone.TerrainSource = upgradedPoiSource;
+                        changed = true;
+                        TryAlignZoneHeightToTerrainSource(zone, upgradedPoiSource);
+                        LogBackfilledLegacyTerrainSource(zone, upgradedPoiSource);
+                        return true;
+                    }
                 }
 
                 if (!TrySelectPoiTerrainSource(zone.PoiName, out string poiName, out CreativeTerrainSource? poiSource, out error) ||
@@ -1920,17 +2033,22 @@ namespace ValheimCreative.Features.Creative
             }
 
             if (!forceNewSource &&
-                existing != null &&
-                existing.WorldSeed == worldSeed &&
-                existing.Biome == zone.Biome)
+                existing != null)
             {
-                float minHeight = GetTerrainSourceMinHeight(existing.Biome);
-                float maxSpawnSlopeDegrees = Mathf.Clamp(ModConfig.CreativeTerrainSourceMaxSpawnSlopeDegrees.Value, 0f, 89f);
-                bool sourceHeightValid = existing.Biome == Heightmap.Biome.Ocean || existing.Center.y >= minHeight;
-                if (sourceHeightValid &&
-                    (WorldGenerator.instance == null ||
-                     existing.Biome == Heightmap.Biome.Ocean ||
-                     IsTerrainSourcePatchStable(zone, existing.Biome, existing.Center.x, existing.Center.z, existing.Center.y, minHeight, maxSpawnSlopeDegrees)))
+                string replaceReason;
+                if (IsLegacyTerrainSource(existing))
+                {
+                    if (TryBackfillLegacyTerrainSource(zone, existing, validatePatch: true, out CreativeTerrainSource? upgradedSource, out replaceReason) &&
+                        upgradedSource != null)
+                    {
+                        zone.TerrainSource = upgradedSource;
+                        changed = true;
+                        TryAlignZoneHeightToTerrainSource(zone, upgradedSource);
+                        LogBackfilledLegacyTerrainSource(zone, upgradedSource);
+                        return true;
+                    }
+                }
+                else if (TryValidateExistingTerrainSource(zone, existing, out replaceReason))
                 {
                     if (TryAlignZoneHeightToTerrainSource(zone, existing))
                     {
@@ -1940,11 +2058,7 @@ namespace ValheimCreative.Features.Creative
                     return true;
                 }
 
-                string reason = sourceHeightValid
-                    ? $"exceeds max spawn slope {maxSpawnSlopeDegrees:0.#} degrees"
-                    : $"is below min height {minHeight:0.##}";
-                ValheimCreativePlugin.ModLogger.LogInfo(
-                    $"Replacing terrain source for {zone.SlotId}: existing {existing.Biome} source at {Format(existing.Center)} {reason}.");
+                LogReplacingTerrainSource(zone, existing, replaceReason);
             }
 
             if (!TrySelectTerrainSource(zone, out CreativeTerrainSource? source, out error) || source == null)
@@ -1956,6 +2070,119 @@ namespace ValheimCreative.Features.Creative
             TryAlignZoneHeightToTerrainSource(zone, source);
             changed = true;
             return true;
+        }
+
+        private static bool TryValidateExistingTerrainSource(CreativeZone zone, CreativeTerrainSource existing, out string replaceReason)
+        {
+            replaceReason = string.Empty;
+            if (IsLegacyTerrainSource(existing))
+            {
+                replaceReason = "has no saved world seed";
+                return false;
+            }
+
+            if (existing.Biome != zone.Biome)
+            {
+                replaceReason = $"biome {existing.Biome} does not match zone biome {zone.Biome}";
+                return false;
+            }
+
+            if (existing.Biome == Heightmap.Biome.Ocean)
+            {
+                return true;
+            }
+
+            float minHeight = GetTerrainSourceMinHeight(existing.Biome);
+            if (existing.Center.y < minHeight)
+            {
+                replaceReason = $"height {existing.Center.y:0.##} is below minimum {minHeight:0.##}";
+                return false;
+            }
+
+            WorldGenerator? generator = CreativeTerrainWorldGenerator.Get(existing);
+            float maxSpawnSlopeDegrees = Mathf.Clamp(ModConfig.CreativeTerrainSourceMaxSpawnSlopeDegrees.Value, 0f, 89f);
+            if (generator == null ||
+                !IsTerrainSourcePatchStable(
+                    generator,
+                    zone,
+                    existing.Biome,
+                    existing.Center.x,
+                    existing.Center.z,
+                    existing.Center.y,
+                    minHeight,
+                    maxSpawnSlopeDegrees))
+            {
+                replaceReason = generator == null
+                    ? "has no available world generator"
+                    : $"exceeds max spawn slope {maxSpawnSlopeDegrees:0.#} degrees";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryBackfillLegacyTerrainSource(
+            CreativeZone zone,
+            CreativeTerrainSource existing,
+            bool validatePatch,
+            out CreativeTerrainSource? upgradedSource,
+            out string replaceReason)
+        {
+            upgradedSource = null;
+            replaceReason = string.Empty;
+            if (!IsLegacyTerrainSource(existing))
+            {
+                replaceReason = "is not a legacy terrain source";
+                return false;
+            }
+
+            if (WorldGenerator.instance == null)
+            {
+                replaceReason = "has no saved world seed and the world generator is not ready";
+                return false;
+            }
+
+            float x = existing.Center.x;
+            float z = existing.Center.z;
+            Heightmap.Biome biome = WorldGenerator.instance.GetBiome(x, z);
+            if (biome != zone.Biome)
+            {
+                replaceReason = $"has no saved world seed and current-world biome {biome} does not match zone biome {zone.Biome}";
+                return false;
+            }
+
+            float height = WorldGenerator.instance.GetHeight(x, z);
+            CreativeTerrainSource candidate = new(
+                new Vector3(x, height, z),
+                biome,
+                GetWorldSeed(),
+                GetWorldSeedName());
+            if (validatePatch &&
+                !TryValidateExistingTerrainSource(zone, candidate, out string validationReason))
+            {
+                replaceReason = $"has no saved world seed and {validationReason}";
+                return false;
+            }
+
+            upgradedSource = candidate;
+            return true;
+        }
+
+        private static bool IsLegacyTerrainSource(CreativeTerrainSource source)
+        {
+            return source.WorldSeed == 0 && string.IsNullOrWhiteSpace(source.WorldSeedName);
+        }
+
+        private static void LogReplacingTerrainSource(CreativeZone zone, CreativeTerrainSource existing, string reason)
+        {
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Replacing terrain source for {zone.SlotId}: existing {existing.Biome} source at {Format(existing.Center)} {reason}.");
+        }
+
+        private static void LogBackfilledLegacyTerrainSource(CreativeZone zone, CreativeTerrainSource source)
+        {
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Backfilled legacy terrain source for {zone.SlotId}: source={Format(source.Center)}, sourceBiome={source.Biome}, worldSeed={source.WorldSeed}.");
         }
 
         private static bool TryAlignZoneHeightToTerrainSource(CreativeZone zone, CreativeTerrainSource source)
@@ -2022,7 +2249,7 @@ namespace ValheimCreative.Features.Creative
                 }
 
                 if (biome != Heightmap.Biome.Ocean &&
-                    !IsTerrainSourcePatchStable(zone, biome, x, z, height, minHeight, maxSpawnSlopeDegrees))
+                    !IsTerrainSourcePatchStable(WorldGenerator.instance, zone, biome, x, z, height, minHeight, maxSpawnSlopeDegrees))
                 {
                     continue;
                 }
@@ -2190,14 +2417,14 @@ namespace ValheimCreative.Features.Creative
             return ModConfig.CreativeTerrainSourceMinHeight.Value;
         }
 
-        private static bool IsTerrainSourcePatchStable(CreativeZone zone, Heightmap.Biome targetBiome, float x, float z, float centerHeight, float minHeight, float maxSlopeDegrees)
+        private static bool IsTerrainSourcePatchStable(WorldGenerator generator, CreativeZone zone, Heightmap.Biome targetBiome, float x, float z, float centerHeight, float minHeight, float maxSlopeDegrees)
         {
-            if (WorldGenerator.instance == null)
+            if (generator == null)
             {
                 return false;
             }
 
-            if (!IsTerrainSourceSpawnStable(targetBiome, x, z, centerHeight, maxSlopeDegrees))
+            if (!IsTerrainSourceSpawnStable(generator, targetBiome, x, z, centerHeight, maxSlopeDegrees))
             {
                 return false;
             }
@@ -2222,12 +2449,12 @@ namespace ValheimCreative.Features.Creative
 
                     float sampleX = x + offsetX;
                     float sampleZ = z + offsetZ;
-                    if (WorldGenerator.instance.GetBiome(sampleX, sampleZ) != targetBiome)
+                    if (generator.GetBiome(sampleX, sampleZ) != targetBiome)
                     {
                         return false;
                     }
 
-                    float sampleHeight = WorldGenerator.instance.GetHeight(sampleX, sampleZ);
+                    float sampleHeight = generator.GetHeight(sampleX, sampleZ);
                     if (targetBiome != Heightmap.Biome.Ocean && sampleHeight < minHeight)
                     {
                         return false;
@@ -2247,9 +2474,9 @@ namespace ValheimCreative.Features.Creative
             return true;
         }
 
-        private static bool IsTerrainSourceSpawnStable(Heightmap.Biome targetBiome, float x, float z, float centerHeight, float maxSlopeDegrees)
+        private static bool IsTerrainSourceSpawnStable(WorldGenerator generator, Heightmap.Biome targetBiome, float x, float z, float centerHeight, float maxSlopeDegrees)
         {
-            if (WorldGenerator.instance == null)
+            if (generator == null)
             {
                 return false;
             }
@@ -2258,12 +2485,12 @@ namespace ValheimCreative.Features.Creative
             {
                 float sampleX = x + offset.x;
                 float sampleZ = z + offset.y;
-                if (WorldGenerator.instance.GetBiome(sampleX, sampleZ) != targetBiome)
+                if (generator.GetBiome(sampleX, sampleZ) != targetBiome)
                 {
                     return false;
                 }
 
-                float sampleHeight = WorldGenerator.instance.GetHeight(sampleX, sampleZ);
+                float sampleHeight = generator.GetHeight(sampleX, sampleZ);
                 float slopeDegrees = Mathf.Atan2(Mathf.Abs(sampleHeight - centerHeight), offset.magnitude) * Mathf.Rad2Deg;
                 if (slopeDegrees > maxSlopeDegrees)
                 {

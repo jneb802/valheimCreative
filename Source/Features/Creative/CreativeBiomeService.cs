@@ -6,7 +6,7 @@ namespace ValheimCreative.Features.Creative
 {
     internal static class CreativeBiomeService
     {
-        private const int ProtocolVersion = 5;
+        private const int ProtocolVersion = 6;
         private const string OverrideRpcName = "DiscordTools_CreativeBiomeOverride";
 
         internal static Heightmap.Biome DefaultBiome =>
@@ -100,6 +100,8 @@ namespace ValheimCreative.Features.Creative
             package.Write(suppressSpawns);
             package.Write(terrainSource != null);
             package.Write(terrainSource?.Center ?? Vector3.zero);
+            package.Write(terrainSource?.WorldSeed ?? 0);
+            package.Write(terrainSource?.WorldSeedName ?? string.Empty);
             package.Write(GetTerrainPatchHalfSize(center, terrainSource));
             package.Write(ModConfig.CreativeTerrainEdgeFalloffWidthValue);
             package.Write(ModConfig.CreativeTerrainEdgeFloorHeight.Value);

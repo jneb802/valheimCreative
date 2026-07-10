@@ -8,6 +8,8 @@ namespace ValheimCreative.Features.Creative
     internal static class CreativeConsoleCommands
     {
         private const string LoadPlayerCommand = "creative_load_player";
+        private const string LoadZoneCommand = "creative_load_zone";
+        private const string ResetZoneCommand = "creative_reset_zone";
         private const string BlueprintOffsetCommand = "creative_blueprint_offset";
         private const string ZoneSizesCommand = "creative_zone_sizes";
         private const string ZoneSizeCommand = "creative_zone_size";
@@ -30,6 +32,8 @@ namespace ValheimCreative.Features.Creative
         {
             if (_registered &&
                 Terminal.commands.ContainsKey(LoadPlayerCommand) &&
+                Terminal.commands.ContainsKey(LoadZoneCommand) &&
+                Terminal.commands.ContainsKey(ResetZoneCommand) &&
                 Terminal.commands.ContainsKey(BlueprintOffsetCommand) &&
                 Terminal.commands.ContainsKey(SiegeEnterCommand) &&
                 Terminal.commands.ContainsKey(SiegeSizeCommand) &&
@@ -64,6 +68,69 @@ namespace ValheimCreative.Features.Creative
                     }
 
                     foreach (string line in CreativeSessionManager.LoadBlueprintForPlayerId(playerId, blueprintName))
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                LoadZoneCommand,
+                "Load a blueprint into an allocated creative zone. Usage: creative_load_zone <ownerPlayerIdOrPlatformId> <blueprintName>",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 3)
+                    {
+                        args.Context.AddString("Usage: creative_load_zone <ownerPlayerIdOrPlatformId> <blueprintName>");
+                        return;
+                    }
+
+                    if (!args.TryParameterLong(1, out long ownerPlayerId) || ownerPlayerId == 0L)
+                    {
+                        args.Context.AddString("ownerPlayerIdOrPlatformId must be a non-zero number.");
+                        return;
+                    }
+
+                    string blueprintName = args[2].Trim();
+                    if (string.IsNullOrWhiteSpace(blueprintName))
+                    {
+                        args.Context.AddString("blueprintName is required.");
+                        return;
+                    }
+
+                    foreach (string line in CreativeSessionManager.LoadBlueprintForZoneOwnerId(ownerPlayerId, blueprintName))
+                    {
+                        args.Context.AddString(line);
+                    }
+                });
+
+            _ = new Terminal.ConsoleCommand(
+                ResetZoneCommand,
+                "Reset an allocated creative zone. Usage: creative_reset_zone <ownerPlayerIdOrPlatformId>",
+                args =>
+                {
+                    if (!RequireServer(args))
+                    {
+                        return;
+                    }
+
+                    if (args.Length < 2)
+                    {
+                        args.Context.AddString("Usage: creative_reset_zone <ownerPlayerIdOrPlatformId>");
+                        return;
+                    }
+
+                    if (!args.TryParameterLong(1, out long ownerPlayerId) || ownerPlayerId == 0L)
+                    {
+                        args.Context.AddString("ownerPlayerIdOrPlatformId must be a non-zero number.");
+                        return;
+                    }
+
+                    foreach (string line in CreativeSessionManager.ResetCreativeZoneForOwnerId(ownerPlayerId))
                     {
                         args.Context.AddString(line);
                     }
