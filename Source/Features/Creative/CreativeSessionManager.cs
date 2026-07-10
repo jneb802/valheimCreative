@@ -2019,15 +2019,19 @@ namespace ValheimCreative.Features.Creative
             }
 
             if (!forceNewSource &&
-                existing != null &&
-                existing.Biome == zone.Biome)
+                existing != null)
             {
-                if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                if (TryValidateExistingTerrainSource(zone, existing, out string replaceReason))
                 {
-                    changed = true;
+                    if (TryAlignZoneHeightToTerrainSource(zone, existing))
+                    {
+                        changed = true;
+                    }
+
+                    return true;
                 }
 
-                return true;
+                LogReplacingTerrainSource(zone, existing, replaceReason);
             }
 
             if (!TrySelectTerrainSource(zone, out CreativeTerrainSource? source, out error) || source == null)
@@ -2039,6 +2043,61 @@ namespace ValheimCreative.Features.Creative
             TryAlignZoneHeightToTerrainSource(zone, source);
             changed = true;
             return true;
+        }
+
+        private static bool TryValidateExistingTerrainSource(CreativeZone zone, CreativeTerrainSource existing, out string replaceReason)
+        {
+            replaceReason = string.Empty;
+            if (existing.WorldSeed == 0)
+            {
+                replaceReason = "has no saved world seed";
+                return false;
+            }
+
+            if (existing.Biome != zone.Biome)
+            {
+                replaceReason = $"biome {existing.Biome} does not match zone biome {zone.Biome}";
+                return false;
+            }
+
+            if (existing.Biome == Heightmap.Biome.Ocean)
+            {
+                return true;
+            }
+
+            float minHeight = GetTerrainSourceMinHeight(existing.Biome);
+            if (existing.Center.y < minHeight)
+            {
+                replaceReason = $"height {existing.Center.y:0.##} is below minimum {minHeight:0.##}";
+                return false;
+            }
+
+            WorldGenerator? generator = CreativeTerrainWorldGenerator.Get(existing);
+            float maxSpawnSlopeDegrees = Mathf.Clamp(ModConfig.CreativeTerrainSourceMaxSpawnSlopeDegrees.Value, 0f, 89f);
+            if (generator == null ||
+                !IsTerrainSourcePatchStable(
+                    generator,
+                    zone,
+                    existing.Biome,
+                    existing.Center.x,
+                    existing.Center.z,
+                    existing.Center.y,
+                    minHeight,
+                    maxSpawnSlopeDegrees))
+            {
+                replaceReason = generator == null
+                    ? "has no available world generator"
+                    : $"exceeds max spawn slope {maxSpawnSlopeDegrees:0.#} degrees";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void LogReplacingTerrainSource(CreativeZone zone, CreativeTerrainSource existing, string reason)
+        {
+            ValheimCreativePlugin.ModLogger.LogInfo(
+                $"Replacing terrain source for {zone.SlotId}: existing {existing.Biome} source at {Format(existing.Center)} {reason}.");
         }
 
         private static bool TryAlignZoneHeightToTerrainSource(CreativeZone zone, CreativeTerrainSource source)
