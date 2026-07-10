@@ -8,10 +8,19 @@ namespace ValheimCreative.Features.Creative
     {
         private static bool _samplingSourceTerrain;
 
-        private static bool TryMap(float x, float z, out Vector2 source)
+        private static bool TryMap(float x, float z, out Vector2 source, out WorldGenerator? generator)
         {
             source = Vector2.zero;
-            return !_samplingSourceTerrain && CreativeVegetationService.TryMapToTerrainSource(x, z, out source);
+            generator = null;
+            if (_samplingSourceTerrain ||
+                !CreativeVegetationService.TryMapToTerrainSource(x, z, out source, out CreativeTerrainSource? terrainSource) ||
+                terrainSource == null)
+            {
+                return false;
+            }
+
+            generator = CreativeTerrainWorldGenerator.Get(terrainSource);
+            return generator != null;
         }
 
         [HarmonyPatch(typeof(WorldGenerator), nameof(WorldGenerator.GetBiome), typeof(float), typeof(float), typeof(float), typeof(bool))]
@@ -19,7 +28,7 @@ namespace ValheimCreative.Features.Creative
         {
             private static bool Prefix(float wx, float wy, ref Heightmap.Biome __result)
             {
-                if (!TryMap(wx, wy, out Vector2 source) || WorldGenerator.instance == null)
+                if (!TryMap(wx, wy, out Vector2 source, out WorldGenerator? generator) || generator == null)
                 {
                     return true;
                 }
@@ -27,7 +36,7 @@ namespace ValheimCreative.Features.Creative
                 _samplingSourceTerrain = true;
                 try
                 {
-                    __result = WorldGenerator.instance.GetBiome(source.x, source.y);
+                    __result = generator.GetBiome(source.x, source.y);
                 }
                 finally
                 {
@@ -43,7 +52,7 @@ namespace ValheimCreative.Features.Creative
         {
             private static bool Prefix(Vector3 point, ref Heightmap.Biome __result)
             {
-                if (!TryMap(point.x, point.z, out Vector2 source) || WorldGenerator.instance == null)
+                if (!TryMap(point.x, point.z, out Vector2 source, out WorldGenerator? generator) || generator == null)
                 {
                     return true;
                 }
@@ -51,7 +60,7 @@ namespace ValheimCreative.Features.Creative
                 _samplingSourceTerrain = true;
                 try
                 {
-                    __result = WorldGenerator.instance.GetBiome(source.x, source.y);
+                    __result = generator.GetBiome(source.x, source.y);
                 }
                 finally
                 {
@@ -67,7 +76,7 @@ namespace ValheimCreative.Features.Creative
         {
             private static void Prefix(ref Heightmap.Biome biome, ref float wx, ref float wy)
             {
-                if (!TryMap(wx, wy, out Vector2 source) || WorldGenerator.instance == null)
+                if (!TryMap(wx, wy, out Vector2 source, out WorldGenerator? generator) || generator == null)
                 {
                     return;
                 }
@@ -75,7 +84,7 @@ namespace ValheimCreative.Features.Creative
                 _samplingSourceTerrain = true;
                 try
                 {
-                    biome = WorldGenerator.instance.GetBiome(source.x, source.y);
+                    biome = generator.GetBiome(source.x, source.y);
                 }
                 finally
                 {
@@ -92,7 +101,7 @@ namespace ValheimCreative.Features.Creative
         {
             private static bool Prefix(float wx, float wy, ref float __result)
             {
-                if (!TryMap(wx, wy, out Vector2 source) || WorldGenerator.instance == null)
+                if (!TryMap(wx, wy, out Vector2 source, out WorldGenerator? generator) || generator == null)
                 {
                     return true;
                 }
@@ -100,7 +109,7 @@ namespace ValheimCreative.Features.Creative
                 _samplingSourceTerrain = true;
                 try
                 {
-                    __result = WorldGenerator.instance.GetHeight(source.x, source.y);
+                    __result = generator.GetHeight(source.x, source.y);
                 }
                 finally
                 {
@@ -124,7 +133,7 @@ namespace ValheimCreative.Features.Creative
 
             private static bool Prefix(float wx, float wy, ref Color mask, ref float __result)
             {
-                if (!TryMap(wx, wy, out Vector2 source) || WorldGenerator.instance == null)
+                if (!TryMap(wx, wy, out Vector2 source, out WorldGenerator? generator) || generator == null)
                 {
                     return true;
                 }
@@ -132,7 +141,7 @@ namespace ValheimCreative.Features.Creative
                 _samplingSourceTerrain = true;
                 try
                 {
-                    __result = WorldGenerator.instance.GetHeight(source.x, source.y, out mask);
+                    __result = generator.GetHeight(source.x, source.y, out mask);
                 }
                 finally
                 {
@@ -148,7 +157,7 @@ namespace ValheimCreative.Features.Creative
         {
             private static bool Prefix(Vector3 pos, ref float __result)
             {
-                if (!TryMap(pos.x, pos.z, out Vector2 source))
+                if (!TryMap(pos.x, pos.z, out Vector2 source, out _))
                 {
                     return true;
                 }

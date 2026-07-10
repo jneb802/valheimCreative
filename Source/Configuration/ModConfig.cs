@@ -14,6 +14,7 @@ namespace ValheimCreative.Configuration
         internal static ConfigEntry<string> CreativePosition = null!;
         internal static ConfigEntry<string> CreativeRotation = null!;
         internal static ConfigEntry<float> CreativeZoneSpacing = null!;
+        internal static ConfigEntry<bool> AutoMigrateCreativeZoneSpacing = null!;
         internal static ConfigEntry<string> DefaultCreativeTerrainMode = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMinDistance = null!;
         internal static ConfigEntry<float> CreativeTerrainSourceMaxDistance = null!;
@@ -92,6 +93,12 @@ namespace ValheimCreative.Configuration
                 "CreativeZoneSpacing",
                 1920f,
                 "Distance between creative zone centers. Default is 30 * 64.");
+
+            AutoMigrateCreativeZoneSpacing = config.Bind(
+                "Creative",
+                "AutoMigrateCreativeZoneSpacing",
+                true,
+                "Automatically moves saved creative zones onto the configured CreativePosition and CreativeZoneSpacing grid when the server starts.");
 
             DefaultCreativeTerrainMode = config.Bind(
                 "Creative",
