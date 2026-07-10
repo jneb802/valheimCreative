@@ -29,7 +29,7 @@ namespace ValheimCreative.Features.Creative
 
             if (WorldGeneratorConstructor == null)
             {
-                return WorldGenerator.instance;
+                return null;
             }
 
             World world = CreateWorld(source);
