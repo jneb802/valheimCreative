@@ -1,3 +1,8 @@
+# 0.2.34
+
+- Added a packaged `TrollCave02:valheim_creative_siege_gateway` test location with a `portal_wood` gateway configured for the `troll_gate_test` siege.
+- Extended siege portal entry RPCs to accept a relative entry position while preserving legacy client compatibility.
+
 # 0.2.33
 
 - Fixed BlackForest pine placement in creative zones by ignoring shallow ocean-depth rejection during copied terrain vegetation placement.

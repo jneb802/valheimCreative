@@ -117,7 +117,9 @@ with `creative_blueprint_offset <blueprintName> [loadYOffset]`.
 Packaged config templates live in `package/BepInEx/config/expand_world/`.
 
 - `expand_locations_valheim_creative.yaml`: disabled `StartTemple:valheim_creative` clone that removes the visible temple objects and levels/paints the terrain.
+- `expand_locations_valheim_creative.yaml`: also includes disabled `TrollCave02:valheim_creative_siege_gateway`, a test exterior location with a `portal_wood` gateway configured for the `troll_gate_test` siege.
 - `expand_prefabs_valheim_creative.yaml`: placeholder runtime rules file.
+- `valheimCreative.sieges.json`: packaged test siege definition loaded by the siege gateway validation location.
 - `valheim_creative.cs`: Expand World Code helpers used by the creative prefab data.
 - `valheim_creative_setup.txt`: command notes for spawning/registering the pad.
 

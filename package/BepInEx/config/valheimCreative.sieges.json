@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "sieges": [
+    {
+      "id": "troll_gate_test",
+      "displayName": "Troll Gate Test",
+      "blueprint": "valheim_creative_pad",
+      "biome": "BlackForest",
+      "slotIndex": 0,
+      "radius": 96,
+      "resetBeforeLoad": true,
+      "grantCreativeKeys": false
+    }
+  ]
+}
