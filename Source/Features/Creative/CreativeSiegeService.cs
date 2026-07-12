@@ -157,6 +157,11 @@ namespace ValheimCreative.Features.Creative
 
         internal static IEnumerable<string> EnterSiege(long peerId, ZDO playerZdo, string siegeId)
         {
+            return EnterSiege(peerId, playerZdo, siegeId, Vector3.zero);
+        }
+
+        internal static IEnumerable<string> EnterSiege(long peerId, ZDO playerZdo, string siegeId, Vector3 entryPosition)
+        {
             if (!CreativeSessionManager.IsServerReady())
             {
                 return CreativeSessionManager.Lines("Server is not ready yet.");
@@ -178,14 +183,15 @@ namespace ValheimCreative.Features.Creative
             Quaternion returnRotation = existing?.ReturnRotation ?? playerZdo.GetRotation();
             long resolvedPeerId = CreativeSessionManager.ResolvePeerId(playerZdo, peerId);
             Heightmap.Biome biome = ParseBiome(definition!.Biome);
+            Vector3 creativeEntryPosition = zone!.PositionValue + entryPosition;
 
             CreativeSession session = new(
                 playerId,
                 resolvedPeerId,
                 CreativeSessionManager.GetPlayerName(playerZdo, "Siege"),
                 0L,
-                zone!.SlotId,
-                zone.PositionValue,
+                zone.SlotId,
+                creativeEntryPosition,
                 ModConfig.CreativeRotationValue,
                 biome,
                 zone.RadiusValue,
@@ -199,7 +205,7 @@ namespace ValheimCreative.Features.Creative
             CreativeSessionManager.TeleportTo(playerZdo, session.CreativePosition, session.CreativeRotation);
             CreativeSessionManager.Save();
 
-            ValheimCreativePlugin.ModLogger.LogInfo($"Entered siege {definition.Id} for {session.PlayerName} ({session.PlayerId}) at {Format(zone.PositionValue)}.");
+            ValheimCreativePlugin.ModLogger.LogInfo($"Entered siege {definition.Id} for {session.PlayerName} ({session.PlayerId}) at {Format(creativeEntryPosition)} with entry offset {Format(entryPosition)}.");
             return CreativeSessionManager.Lines($"Entered siege: {definition.DisplayNameOrId}. Use !return to leave.");
         }
 

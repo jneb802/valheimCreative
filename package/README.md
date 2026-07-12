@@ -56,3 +56,7 @@ and optional `biome` values. Negative `loadYOffset` values lower the loaded
 build. Admins can read or change offsets in game with `!creative offset`.
 Blueprint save includes invited players' pieces when they are built inside the
 owner's creative zone.
+
+The package includes a disabled `TrollCave02:valheim_creative_siege_gateway`
+test location and `troll_gate_test` siege definition. Spawn the location during
+validation and use its `portal_wood` gateway to enter the configured siege.

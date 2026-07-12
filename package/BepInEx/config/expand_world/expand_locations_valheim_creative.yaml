@@ -32,3 +32,20 @@
     - Pickable_Mushroom,
     - Pickable_Stone,
     - RaspberryBush,
+
+# Test exterior siege gateway location.
+#
+# This clone keeps the TrollCave02 exterior but adds a portal_wood object whose
+# PraetorisClient SiegeGateway fields route the player into valheimCreative's
+# configured troll_gate_test siege instead of a paired portal.
+- prefab: TrollCave02:valheim_creative_siege_gateway
+  enabled: false
+  biome: BlackForest
+  biomeArea: median
+  quantity: 0
+  minAltitude: 3
+  minTerrainDelta: 5
+  exteriorRadius: 12
+  clearArea: true
+  objects:
+    - portal_wood,0,0,1,0,0,0,1,1,1,1,valheim_creative_siege_gateway_troll_gate_test

@@ -11,3 +11,11 @@
     - TerrainModifier.m_levelRadius, 32
     - TerrainModifier.m_smoothRadius, 32
     - TerrainModifier.m_smoothPower, 4
+- name: valheim_creative_siege_gateway_troll_gate_test
+  strings:
+    - SiegeGateway.m_siegeId, troll_gate_test
+    - valheimCreativeSiegeId, troll_gate_test
+    - tag, siege:troll_gate_test
+  vecs:
+    - SiegeGateway.m_entryPosition, 0,0,0
+    - valheimCreativeSiegeEntryPosition, 0,0,0

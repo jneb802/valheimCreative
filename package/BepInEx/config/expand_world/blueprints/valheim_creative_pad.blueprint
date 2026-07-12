@@ -1,1 +1,6 @@
-piece_workbench;0;0;0;0;0;0;1;;1;1;1;;1
+#Name:valheim_creative_pad
+#Creator:Codex
+#Description:"Minimal one-piece siege validation pad"
+#Category:Blueprints
+#Pieces
+piece_workbench;BuildingWorkbench;0;0;0;0;0;0;1;;1;1;1
