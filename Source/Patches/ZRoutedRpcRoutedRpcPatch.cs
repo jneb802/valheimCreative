@@ -16,8 +16,9 @@ namespace ValheimCreative.Patches
 
             try
             {
+                ZPackage rpcPackage = new(pkg.GetArray());
                 ZRoutedRpc.RoutedRPCData rpcData = new();
-                rpcData.Deserialize(pkg);
+                rpcData.Deserialize(rpcPackage);
 
                 return !CreativeChatCommands.TryConsumeRoutedSay(rpcData);
             }
@@ -25,10 +26,6 @@ namespace ValheimCreative.Patches
             {
                 ValheimCreativePlugin.ModLogger.LogWarning($"Failed to inspect routed RPC package: {ex}");
                 return true;
-            }
-            finally
-            {
-                pkg.SetPos(0);
             }
         }
     }
